@@ -21,6 +21,7 @@
     "@wavex-os/healing": "workspace:*",
     "@wavex-os/inference-adapter": "workspace:*",
     "@wavex-os/observability": "workspace:*",
+    "@wavex-os/shared": "workspace:*",
     "drizzle-orm": "^0.36.4",
     "fastify": "^4.28.1",
     "js-yaml": "^4.1.0",

@@ -304,6 +304,9 @@ importers:
       '@wavex-os/observability':
         specifier: workspace:*
         version: link:../observability
+      '@wavex-os/shared':
+        specifier: workspace:*
+        version: link:../shared
       drizzle-orm:
         specifier: ^0.36.4
         version: 0.36.4(@electric-sql/pglite@0.2.17)(@types/react@19.2.14)(postgres@3.4.9)(react@19.2.6)
