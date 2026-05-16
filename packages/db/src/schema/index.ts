@@ -9,3 +9,6 @@ export * from "./issues.js";
 export * from "./memory-episodic.js";
 export * from "./memory-preference.js";
 export * from "./memory-semantic.js";
+// Mission Control — universal accountability ledger
+export * from "./deliverables.js";
+export * from "./expected-kpi-impacts.js";
