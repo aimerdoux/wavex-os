@@ -340,6 +340,170 @@ const plugin = definePlugin({
     });
 
     // -------------------------------------------------------------------
+    // Mission Control — initial activity fetch + scope-tree + KPI catalog.
+    //   Backs `usePluginData("mission-control-activity")` in the Stream
+    //   widget. Returns one bundle so the widget can build its RenderContext
+    //   in a single round-trip (no chained fetches).
+    // -------------------------------------------------------------------
+    ctx.data.register("mission-control-activity", async ({ companyId }) => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      const id = String(companyId ?? "");
+      if (!id) {
+        return {
+          ok: false,
+          events: [],
+          scopeNodes: [],
+          kpis: [],
+          mode: "solo_founder" as const,
+          source: "no-company",
+        };
+      }
+      try {
+        const [actRes, treeRes] = await Promise.all([
+          ctx.http.fetch(
+            `${base}/api/mission-control/${encodeURIComponent(id)}/activity?limit=200`,
+          ),
+          ctx.http.fetch(
+            `${base}/api/mission-control/${encodeURIComponent(id)}/scope-tree`,
+          ),
+        ]);
+        const actBody = (await actRes.json().catch(() => ({}))) as {
+          ok?: boolean;
+          events?: unknown[];
+          error?: string;
+        };
+        const treeBody = (await treeRes.json().catch(() => ({}))) as {
+          ok?: boolean;
+          tree?: {
+            mode?: string;
+            nodes?: Array<{
+              id: string;
+              kind: string;
+              name: string;
+              parentId?: string;
+              childIds?: string[];
+            }>;
+            kpis?: Array<{ id: string; name: string }>;
+          };
+        };
+        return {
+          ok: actBody.ok !== false,
+          events: Array.isArray(actBody.events) ? actBody.events : [],
+          scopeNodes: treeBody.tree?.nodes ?? [],
+          kpis: treeBody.tree?.kpis ?? [],
+          mode: (treeBody.tree?.mode as "solo_founder" | "avatar" | "hybrid") ??
+            "solo_founder",
+          source: "wavex-api",
+        };
+      } catch (err) {
+        return {
+          ok: false,
+          events: [],
+          scopeNodes: [],
+          kpis: [],
+          mode: "solo_founder" as const,
+          source: "exception",
+          error: String(err),
+        };
+      }
+    });
+
+    // -------------------------------------------------------------------
+    // Mission Control — scope tree only (cheap re-fetch for the future
+    //   ScopeNode profile page; Stream widget gets it bundled above).
+    // -------------------------------------------------------------------
+    ctx.data.register("mission-control-scope-tree", async ({ companyId }) => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      const id = String(companyId ?? "");
+      if (!id) return { ok: false, tree: null, source: "no-company" };
+      try {
+        const r = await ctx.http.fetch(
+          `${base}/api/mission-control/${encodeURIComponent(id)}/scope-tree`,
+        );
+        if (!r.ok) {
+          return { ok: false, tree: null, source: "wavex-api-error", status: r.status };
+        }
+        const body = await r.json();
+        return { ok: true, ...(body as Record<string, unknown>), source: "wavex-api" };
+      } catch (err) {
+        return { ok: false, tree: null, source: "exception", error: String(err) };
+      }
+    });
+
+    // -------------------------------------------------------------------
+    // Mission Control — live stream. Polls the activity endpoint with a
+    //   `since` cursor and re-publishes new rows onto the `mission-control-
+    //   stream` channel. Polling beats subscribing to the wavex SSE
+    //   endpoint inside the worker because the plugin SDK's ctx.http
+    //   doesn't expose response streaming; the 2s cadence is well below
+    //   any user-perceptible latency for a demo wedge.
+    //
+    //   Action key is used so the UI can lazily "subscribe" by invoking
+    //   it once per (companyId) — the worker then takes over and pushes
+    //   on its own schedule. Returns immediately; the loop runs in the
+    //   background until the UI closes the stream.
+    // -------------------------------------------------------------------
+    const streamPollers = new Map<string, NodeJS.Timeout>();
+    ctx.actions.register(
+      "mission-control-stream-subscribe",
+      async ({ companyId }) => {
+        const id = String(companyId ?? "");
+        if (!id) return { ok: false, error: "missing companyId" };
+        if (streamPollers.has(id)) {
+          return { ok: true, alreadyRunning: true };
+        }
+        const cfg = (await ctx.config.get()) as PluginConfig | null;
+        const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+        let since: string | null = new Date().toISOString();
+        ctx.streams.open("mission-control-stream", id);
+        const tick = async (): Promise<void> => {
+          try {
+            const url = `${base}/api/mission-control/${encodeURIComponent(id)}/activity?since=${encodeURIComponent(since ?? "")}&order=asc&limit=200`;
+            const r = await ctx.http.fetch(url);
+            if (!r.ok) return;
+            const body = (await r.json()) as {
+              ok?: boolean;
+              events?: Array<{ id: string; at: string }>;
+            };
+            const events = body.events ?? [];
+            if (events.length === 0) return;
+            for (const e of events) {
+              ctx.streams.emit("mission-control-stream", e);
+            }
+            const last = events[events.length - 1];
+            if (last?.at) since = last.at;
+          } catch (err) {
+            ctx.logger.warn("mission-control stream poll failed", {
+              err: String(err),
+            });
+          }
+        };
+        // Fire once immediately, then on a 2s interval.
+        void tick();
+        const handle = setInterval(() => {
+          void tick();
+        }, 2000);
+        streamPollers.set(id, handle);
+        return { ok: true };
+      },
+    );
+    ctx.actions.register(
+      "mission-control-stream-unsubscribe",
+      async ({ companyId }) => {
+        const id = String(companyId ?? "");
+        const handle = streamPollers.get(id);
+        if (handle) {
+          clearInterval(handle);
+          streamPollers.delete(id);
+          ctx.streams.close("mission-control-stream");
+        }
+        return { ok: true };
+      },
+    );
+
+    // -------------------------------------------------------------------
     // inception-status — reads /api/companies/<id>/agents from op-omega
     //   server. Returns ready/total counts + manifest goal/signed_at.
     // -------------------------------------------------------------------

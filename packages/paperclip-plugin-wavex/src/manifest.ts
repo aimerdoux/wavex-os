@@ -24,6 +24,8 @@ const DELIVERABLES_SLOT = "wavex-deliverables";
 const FLEET_KPIS_SLOT = "wavex-fleet-kpis";
 const DELIVERABLES_THROUGHPUT_SLOT = "wavex-deliverables-throughput";
 const AGENT_STATUS_SLOT = "wavex-agent-status";
+// Mission Control Phase 1 — live plain-language activity stream.
+const MC_STREAM_SLOT = "wavex-mission-control-stream";
 
 const manifest: PaperclipPluginManifestV1 = {
   id: PLUGIN_ID,
@@ -49,6 +51,14 @@ const manifest: PaperclipPluginManifestV1 = {
   },
   ui: {
     slots: [
+      // Phase 1.4 — the wedge. Lands first so it sits at the top of the
+      // dashboard widget column where it has the most demo visibility.
+      {
+        type: "dashboardWidget",
+        id: MC_STREAM_SLOT,
+        displayName: "Mission Control — Activity Stream",
+        exportName: "MissionControlStreamWidget",
+      },
       {
         type: "dashboardWidget",
         id: EXPERT_AGENTS_SLOT,

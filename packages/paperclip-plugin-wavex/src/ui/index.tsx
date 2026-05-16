@@ -14,6 +14,9 @@ import type {
   PluginSettingsPageProps,
 } from "@wavex-os/plugin-sdk-shim/ui";
 
+// Mission Control — Phase 1 Stream widget (plain-language activity feed).
+export { MissionControlStreamWidget } from "./MissionControlStreamWidget.js";
+
 const WAVEX_COLOR = "#00d4ff";
 const WAVEX_BG = "color-mix(in srgb, #00d4ff 6%, transparent)";
 
