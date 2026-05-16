@@ -338,6 +338,9 @@ importers:
       '@wavex-os/plugin-sdk-shim':
         specifier: workspace:*
         version: link:../plugin-sdk-shim
+      '@wavex-os/shared':
+        specifier: workspace:*
+        version: link:../shared
     devDependencies:
       '@paperclipai/plugin-sdk':
         specifier: workspace:*
@@ -360,6 +363,9 @@ importers:
       typescript:
         specifier: ^5.7.3
         version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.39)
 
   packages/plugin-sdk-shim:
     dependencies:

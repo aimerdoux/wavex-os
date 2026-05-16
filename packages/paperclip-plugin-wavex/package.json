@@ -17,10 +17,12 @@
     "prebuild": "pnpm --filter @paperclipai/plugin-sdk ensure-build-deps 2>/dev/null || true",
     "build": "tsc",
     "clean": "rm -rf dist",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
-    "@wavex-os/plugin-sdk-shim": "workspace:*"
+    "@wavex-os/plugin-sdk-shim": "workspace:*",
+    "@wavex-os/shared": "workspace:*"
   },
   "devDependencies": {
     "@paperclipai/plugin-sdk": "workspace:*",
@@ -29,7 +31,8 @@
     "@types/react-dom": "^19.0.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
   },
   "peerDependencies": {
     "react": ">=18"
