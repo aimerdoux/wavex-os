@@ -8,6 +8,27 @@
       "when": 1746644400000,
       "tag": "0001_initial",
       "breakpoints": false
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1747000000000,
+      "tag": "0004_deliverables",
+      "breakpoints": false
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1747000001000,
+      "tag": "0005_expected_kpi_impacts",
+      "breakpoints": false
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1747000002000,
+      "tag": "0006_mission_control_events",
+      "breakpoints": false
     }
   ]
 }

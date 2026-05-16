@@ -36,6 +36,7 @@ import { registerTiersRoutes } from "./routes/tiers.js";
 import { registerBillingRoutes } from "./routes/billing.js";
 import { registerAvatarRoutes } from "./routes/avatar.js";
 import { registerConnectorRoutes } from "./routes/connectors.js";
+import { registerMissionControlRoutes } from "./routes/mission-control.js";
 
 let bootstrapped = false;
 function bootstrap(): void {
@@ -75,6 +76,7 @@ export function registerOpOmegaRoutes(app: FastifyInstance): void {
   void registerBillingRoutes(app);
   registerAvatarRoutes(app);
   registerConnectorRoutes(app);
+  registerMissionControlRoutes(app);
 }
 
 export { applyStateBridge, getInstanceDir, getOnboardingDir, getWavexDataRoot } from "./state-bridge.js";
