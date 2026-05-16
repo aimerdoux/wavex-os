@@ -29,6 +29,7 @@ import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import type { CompanyManifest } from "@op-omega/plugin-onboarding";
 import { readInferenceAllocation } from "../routes/inference-allocation.js";
+import { mirrorToMissionControl } from "../mission-control/mirror.js";
 
 interface SwarmAgentEntry {
   template_id?: string | null;
@@ -1113,6 +1114,21 @@ export async function handoffToPaperclip(
       report.created.push({ slot, agentId: out.agentId, status: out.status });
       completed += 1;
       await updateHandoffProgress(wavexCompanyId, slot, { status: "hired", agentId: out.agentId }, completed);
+      // Mission Control mirror — surfaces "Sales Agent joined under Sales"
+      // (or equivalent) in the Stream widget. Best-effort, never throws.
+      await mirrorToMissionControl({
+        companyId: paperclipCompanyId,
+        instanceId: wavexCompanyId,
+        actorNodeId: out.agentId,
+        action: "wavex.paperclip_handoff.agent_hired",
+        modeContext: "solo_founder",
+        subjectRef: {
+          kind: "node",
+          id: out.agentId,
+          toNodeId: reportsToId ?? undefined,
+          slot,
+        },
+      });
     } catch (e) {
       report.errors.push({ slot, message: e instanceof Error ? e.message : String(e) });
       completed += 1;

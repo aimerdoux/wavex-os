@@ -20,6 +20,7 @@ import { randomBytes } from "node:crypto";
 import { route as tierRoute } from "@op-omega/plugin-tier-router";
 import { withTokenAccounting } from "../../lib/token-accounting.js";
 import { readPreferences, type PreferenceRule } from "../memory/preferences.js";
+import { mirrorToMissionControl } from "../../mission-control/mirror.js";
 import { gmailProvider } from "./mail/gmail-provider.js";
 import { outlookProvider } from "./mail/outlook-provider.js";
 import type { MailClassification, MailProvider, MailThread } from "./mail/types.js";
@@ -248,6 +249,19 @@ async function logActivity(paperclipUrl: string, paperclipCompanyId: string, age
       }),
     });
   } catch { /* non-fatal */ }
+  // Mirror into the Mission Control ledger so the Stream widget surfaces
+  // it alongside Paperclip-side events. Best-effort; never throws.
+  await mirrorToMissionControl({
+    companyId: paperclipCompanyId,
+    actorNodeId: agentId,
+    action,
+    subjectRef: {
+      kind: "approval",
+      id: typeof details.approvalId === "string" ? details.approvalId : undefined,
+      ...details,
+    },
+    modeContext: "avatar",
+  });
 }
 
 async function createApproval(

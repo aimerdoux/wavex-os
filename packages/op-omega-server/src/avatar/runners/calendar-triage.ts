@@ -19,6 +19,7 @@ import { googleCalendarProvider } from "./calendar/google-provider.js";
 import { microsoftCalendarProvider } from "./calendar/microsoft-provider.js";
 import type { CalendarEvent, CalendarProvider, CalendarRecommendation } from "./calendar/types.js";
 import type { AvatarApproval } from "./mail-triage.js";
+import { mirrorToMissionControl } from "../../mission-control/mirror.js";
 
 interface RunResult {
   avatarId: string;
@@ -166,6 +167,17 @@ async function logActivity(paperclipUrl: string, paperclipCompanyId: string, age
       }),
     });
   } catch { /* non-fatal */ }
+  await mirrorToMissionControl({
+    companyId: paperclipCompanyId,
+    actorNodeId: agentId,
+    action,
+    subjectRef: {
+      kind: "approval",
+      id: typeof details.approvalId === "string" ? details.approvalId : undefined,
+      ...details,
+    },
+    modeContext: "avatar",
+  });
 }
 
 export async function runCalendarTriage(

@@ -20,6 +20,7 @@ import { route as tierRoute } from "@op-omega/plugin-tier-router";
 import { withTokenAccounting } from "../../lib/token-accounting.js";
 import { readPreferences } from "../memory/preferences.js";
 import type { AvatarApproval } from "./mail-triage.js";
+import { mirrorToMissionControl } from "../../mission-control/mirror.js";
 
 interface SlackMention {
   channel: string;          // #channel-name
@@ -203,6 +204,17 @@ async function logActivity(paperclipUrl: string, paperclipCompanyId: string, age
       }),
     });
   } catch { /* non-fatal */ }
+  await mirrorToMissionControl({
+    companyId: paperclipCompanyId,
+    actorNodeId: agentId,
+    action,
+    subjectRef: {
+      kind: "approval",
+      id: typeof details.approvalId === "string" ? details.approvalId : undefined,
+      ...details,
+    },
+    modeContext: "avatar",
+  });
 }
 
 export async function runSlackDigest(

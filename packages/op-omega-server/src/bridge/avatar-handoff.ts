@@ -19,6 +19,7 @@ import { readFile, writeFile, mkdir, readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { mirrorToMissionControl } from "../mission-control/mirror.js";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -310,6 +311,18 @@ export async function handoffAvatarToPaperclip(avatarId: string): Promise<Avatar
       });
       conductorAgentId = conductor.agentId;
       slotToPaperclipId["conductor"] = conductorAgentId;
+      await mirrorToMissionControl({
+        companyId: paperclipCompanyId,
+        instanceId: avatarId,
+        actorNodeId: conductorAgentId,
+        action: "wavex.avatar_handoff.conductor_hired",
+        modeContext: "avatar",
+        subjectRef: {
+          kind: "node",
+          id: conductorAgentId,
+          avatarId,
+        },
+      });
     } catch (e) {
       report.errors.push({ provider: "conductor", message: e instanceof Error ? e.message : String(e) });
       // Without a conductor the Avatar is half-built; bail rather than
@@ -356,6 +369,19 @@ export async function handoffAvatarToPaperclip(avatarId: string): Promise<Avatar
       });
       slotToPaperclipId[provider] = hire.agentId;
       report.created.push({ provider, agentId: hire.agentId, status: hire.status });
+      await mirrorToMissionControl({
+        companyId: paperclipCompanyId,
+        instanceId: avatarId,
+        actorNodeId: hire.agentId,
+        action: "wavex.avatar_handoff.subagent_hired",
+        modeContext: "avatar",
+        subjectRef: {
+          kind: "node",
+          id: hire.agentId,
+          toNodeId: conductorAgentId,
+          provider,
+        },
+      });
     } catch (e) {
       report.errors.push({ provider, message: e instanceof Error ? e.message : String(e) });
     }
