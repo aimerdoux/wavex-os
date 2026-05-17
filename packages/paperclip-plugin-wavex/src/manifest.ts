@@ -30,6 +30,8 @@ const MC_STREAM_SLOT = "wavex-mission-control-stream";
 const MC_DELIVERABLES_SLOT = "wavex-mission-control-deliverables";
 // Mission Control Phase 3 — KPI scoreboard (attainment per KPI).
 const MC_SCOREBOARD_SLOT = "wavex-mission-control-scoreboard";
+// Mission Control Phase 4 — Node profile + assignment chain inspector.
+const MC_NODE_PROFILE_SLOT = "wavex-mission-control-node-profile";
 
 const manifest: PaperclipPluginManifestV1 = {
   id: PLUGIN_ID,
@@ -78,6 +80,14 @@ const manifest: PaperclipPluginManifestV1 = {
         id: MC_SCOREBOARD_SLOT,
         displayName: "Mission Control — KPI Scoreboard",
         exportName: "MissionControlScoreboardWidget",
+      },
+      // Phase 4 — Node profile: open assignments per node + arbitrary
+      // task-id chain inspector.
+      {
+        type: "dashboardWidget",
+        id: MC_NODE_PROFILE_SLOT,
+        displayName: "Mission Control — Node Profile",
+        exportName: "MissionControlNodeProfileWidget",
       },
       {
         type: "dashboardWidget",

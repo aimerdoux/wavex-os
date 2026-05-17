@@ -433,6 +433,50 @@ const plugin = definePlugin({
     });
 
     // -------------------------------------------------------------------
+    // Mission Control — Phase 4 chain handlers.
+    // -------------------------------------------------------------------
+    ctx.data.register("mission-control-node-open-assignments", async ({ companyId, nodeId }) => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      const id = String(companyId ?? "");
+      const n = String(nodeId ?? "");
+      if (!id || !n) return { ok: false, open: [], source: "no-target" };
+      try {
+        const r = await ctx.http.fetch(
+          `${base}/api/mission-control/${encodeURIComponent(id)}/node/${encodeURIComponent(n)}/open-assignments`,
+        );
+        if (!r.ok) return { ok: false, open: [], source: "wavex-api-error", status: r.status };
+        const body = (await r.json()) as { ok?: boolean; open?: unknown[] };
+        return { ok: body.ok !== false, open: Array.isArray(body.open) ? body.open : [], source: "wavex-api" };
+      } catch (err) {
+        return { ok: false, open: [], source: "exception", error: String(err) };
+      }
+    });
+
+    ctx.data.register("mission-control-task-chain", async ({ companyId, taskRefId }) => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      const id = String(companyId ?? "");
+      const t = String(taskRefId ?? "");
+      if (!id || !t) return { ok: false, chain: [], currentOwner: null, source: "no-target" };
+      try {
+        const r = await ctx.http.fetch(
+          `${base}/api/mission-control/${encodeURIComponent(id)}/tasks/${encodeURIComponent(t)}/chain`,
+        );
+        if (!r.ok) return { ok: false, chain: [], currentOwner: null, source: "wavex-api-error", status: r.status };
+        const body = (await r.json()) as { ok?: boolean; chain?: unknown[]; currentOwner?: string | null };
+        return {
+          ok: body.ok !== false,
+          chain: Array.isArray(body.chain) ? body.chain : [],
+          currentOwner: body.currentOwner ?? null,
+          source: "wavex-api",
+        };
+      } catch (err) {
+        return { ok: false, chain: [], currentOwner: null, source: "exception", error: String(err) };
+      }
+    });
+
+    // -------------------------------------------------------------------
     // Mission Control — KPI scoreboard. Backs the Phase 3 widget.
     // -------------------------------------------------------------------
     ctx.data.register("mission-control-scoreboard", async ({ companyId }) => {

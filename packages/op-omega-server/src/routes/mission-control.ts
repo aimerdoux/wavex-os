@@ -35,6 +35,14 @@ import {
   recordKpiMeasurement,
   type DeclareKpiImpactInput,
 } from "../mission-control/kpi-impacts.js";
+import {
+  appendAssignmentLink,
+  currentOwnerOf,
+  listOpenAssignmentsForNode,
+  queryAssignmentChain,
+  type AppendLinkInput,
+  type AssignmentLinkKind,
+} from "../mission-control/assignment-chain.js";
 import type {
   DeliverableKind,
   DeliverableStatus,
@@ -469,6 +477,118 @@ export function registerMissionControlRoutes(app: FastifyInstance): void {
         body?.modeContext ?? "solo_founder",
       );
       return { ok: true, announced };
+    },
+  );
+
+  // ── Assignment chain (Phase 4) ────────────────────────────────────────
+  app.post(
+    "/api/mission-control/:companyId/tasks/:taskRefId/assignments",
+    async (req, reply) => {
+      const ar = authReq(req);
+      try {
+        assertBoard(ar);
+      } catch (e) {
+        if (e instanceof AuthError)
+          return reply.status(e.statusCode).send({ error: e.message });
+        throw e;
+      }
+      const { companyId, taskRefId } = req.params as {
+        companyId: string;
+        taskRefId: string;
+      };
+      assertCompanyAccess(ar, companyId);
+      await ensureBootstrap();
+      const body = req.body as Partial<AppendLinkInput> | null;
+      if (
+        !body ||
+        typeof body.kind !== "string" ||
+        typeof body.taskRefType !== "string"
+      ) {
+        return reply
+          .status(400)
+          .send({ ok: false, error: "kind + taskRefType required" });
+      }
+      try {
+        const row = await appendAssignmentLink({
+          companyId,
+          instanceId: body.instanceId ?? companyId,
+          modeContext: body.modeContext ?? "solo_founder",
+          taskRefType: body.taskRefType as AppendLinkInput["taskRefType"],
+          taskRefId,
+          kind: body.kind as AssignmentLinkKind,
+          fromNodeId: body.fromNodeId,
+          toNodeId: body.toNodeId,
+          reason: body.reason,
+          taskRef: body.taskRef,
+        });
+        return { ok: true, link: row };
+      } catch (e) {
+        return reply.status(503).send({
+          ok: false,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
+    },
+  );
+
+  app.get(
+    "/api/mission-control/:companyId/tasks/:taskRefId/chain",
+    async (req, reply) => {
+      const ar = authReq(req);
+      try {
+        assertBoard(ar);
+      } catch (e) {
+        if (e instanceof AuthError)
+          return reply.status(e.statusCode).send({ error: e.message });
+        throw e;
+      }
+      const { companyId, taskRefId } = req.params as {
+        companyId: string;
+        taskRefId: string;
+      };
+      assertCompanyAccess(ar, companyId);
+      await ensureBootstrap();
+      try {
+        const [chain, owner] = await Promise.all([
+          queryAssignmentChain(taskRefId),
+          currentOwnerOf(taskRefId),
+        ]);
+        return { ok: true, chain, currentOwner: owner };
+      } catch (e) {
+        return reply.status(503).send({
+          ok: false,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
+    },
+  );
+
+  app.get(
+    "/api/mission-control/:companyId/node/:nodeId/open-assignments",
+    async (req, reply) => {
+      const ar = authReq(req);
+      try {
+        assertBoard(ar);
+      } catch (e) {
+        if (e instanceof AuthError)
+          return reply.status(e.statusCode).send({ error: e.message });
+        throw e;
+      }
+      const { companyId, nodeId } = req.params as {
+        companyId: string;
+        nodeId: string;
+      };
+      assertCompanyAccess(ar, companyId);
+      await ensureBootstrap();
+      try {
+        const open = await listOpenAssignmentsForNode(nodeId);
+        return { ok: true, open };
+      } catch (e) {
+        return reply.status(503).send({
+          ok: false,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
     },
   );
 

@@ -29,6 +29,13 @@
       "when": 1747000002000,
       "tag": "0006_mission_control_events",
       "breakpoints": false
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1747000003000,
+      "tag": "0007_assignment_links",
+      "breakpoints": false
     }
   ]
 }

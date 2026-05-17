@@ -20,6 +20,8 @@ export { MissionControlStreamWidget } from "./MissionControlStreamWidget.js";
 export { MissionControlDeliverablesWidget } from "./MissionControlDeliverablesWidget.js";
 // Mission Control — Phase 3 KPI Scoreboard.
 export { MissionControlScoreboardWidget } from "./MissionControlScoreboardWidget.js";
+// Mission Control — Phase 4 Node profile + assignment chain inspector.
+export { MissionControlNodeProfileWidget } from "./MissionControlNodeProfileWidget.js";
 
 const WAVEX_COLOR = "#00d4ff";
 const WAVEX_BG = "color-mix(in srgb, #00d4ff 6%, transparent)";
