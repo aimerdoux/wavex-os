@@ -21,11 +21,11 @@ import {
   usePluginAction,
   usePluginData,
   usePluginStream,
-} from "@wavex-os/plugin-sdk-shim/ui";
+} from "@paperclipai/plugin-sdk/ui";
 import type {
   PluginBridgeError,
   PluginWidgetProps,
-} from "@wavex-os/plugin-sdk-shim/ui";
+} from "@paperclipai/plugin-sdk/ui";
 import type {
   ActivityEvent,
   ActivityEventKind,

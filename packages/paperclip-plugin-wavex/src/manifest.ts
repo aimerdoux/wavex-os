@@ -12,7 +12,7 @@
 import type { PaperclipPluginManifestV1 } from "@wavex-os/plugin-sdk-shim";
 
 const PLUGIN_ID = "wavex-os.paperclip-plugin";
-const PLUGIN_VERSION = "0.2.0";
+const PLUGIN_VERSION = "0.3.0";
 
 // Slot IDs are referenced from the host's UI registry. Keep them stable
 // (operator's saved-layout state references them by id).

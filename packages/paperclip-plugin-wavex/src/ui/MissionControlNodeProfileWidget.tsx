@@ -10,7 +10,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   usePluginData,
   type PluginWidgetProps,
-} from "@wavex-os/plugin-sdk-shim/ui";
+} from "@paperclipai/plugin-sdk/ui";
 import type { AssignmentLink } from "@wavex-os/shared/types/mission-control";
 
 const WAVEX_COLOR = "#00d4ff";

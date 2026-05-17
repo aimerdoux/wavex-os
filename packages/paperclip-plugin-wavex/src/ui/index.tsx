@@ -7,12 +7,12 @@
  * keeps the plugin from getting out of sync with the host's authority
  * model (issues are still the source of truth for state changes).
  */
-import { usePluginData } from "@wavex-os/plugin-sdk-shim/ui";
+import { usePluginData } from "@paperclipai/plugin-sdk/ui";
 import type {
   PluginWidgetProps,
   PluginSidebarProps,
   PluginSettingsPageProps,
-} from "@wavex-os/plugin-sdk-shim/ui";
+} from "@paperclipai/plugin-sdk/ui";
 
 // Mission Control — Phase 1 Stream widget (plain-language activity feed).
 export { MissionControlStreamWidget } from "./MissionControlStreamWidget.js";

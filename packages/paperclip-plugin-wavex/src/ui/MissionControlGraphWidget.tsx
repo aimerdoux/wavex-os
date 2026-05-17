@@ -19,7 +19,7 @@ import { useMemo, useState } from "react";
 import {
   usePluginData,
   type PluginWidgetProps,
-} from "@wavex-os/plugin-sdk-shim/ui";
+} from "@paperclipai/plugin-sdk/ui";
 
 const WAVEX_COLOR = "#00d4ff";
 const WAVEX_BG = "color-mix(in srgb, #00d4ff 6%, transparent)";
