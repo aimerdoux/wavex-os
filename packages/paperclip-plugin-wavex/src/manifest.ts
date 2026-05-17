@@ -12,7 +12,7 @@
 import type { PaperclipPluginManifestV1 } from "@wavex-os/plugin-sdk-shim";
 
 const PLUGIN_ID = "wavex-os.paperclip-plugin";
-const PLUGIN_VERSION = "0.1.0";
+const PLUGIN_VERSION = "0.2.0";
 
 // Slot IDs are referenced from the host's UI registry. Keep them stable
 // (operator's saved-layout state references them by id).
@@ -52,6 +52,7 @@ const manifest: PaperclipPluginManifestV1 = {
     "ui.dashboardWidget.register",
     "ui.sidebar.register",
     "ui.page.register",
+    "instance.settings.register",
     // The worker reads from the wavex-os op-omega-server + (optionally) the
     // Supabase REST endpoint. No outbound HTTP to third parties — only
     // localhost and the configured operator infra.

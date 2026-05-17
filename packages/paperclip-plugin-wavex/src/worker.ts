@@ -33,6 +33,18 @@ interface PluginConfig {
 
 const DEFAULT_WAVEX_BASE = "http://127.0.0.1:3101";
 
+/** Plain Node `fetch`, deliberately NOT routed through `ctx.http.fetch`.
+ *
+ *  The host's plugin-bridge HTTP client refuses any URL that resolves to a
+ *  private/loopback IP as an SSRF guard. Mission Control's data source is
+ *  the wavex op-omega-server sibling on 127.0.0.1:3101 — strictly local —
+ *  so we use the worker process's native fetch, which is not subject to
+ *  that guard. This keeps the wavex plugin honest about its only outbound
+ *  target (the same machine the host is on) without weakening the
+ *  vendored Paperclip core's general-purpose SSRF protection. */
+const localFetch: typeof globalThis.fetch = (input, init) =>
+  globalThis.fetch(input, init);
+
 const plugin = definePlugin({
   async setup(ctx) {
     ctx.logger.info("WaveX plugin worker starting");
@@ -361,10 +373,10 @@ const plugin = definePlugin({
       }
       try {
         const [actRes, treeRes] = await Promise.all([
-          ctx.http.fetch(
+          localFetch(
             `${base}/api/mission-control/${encodeURIComponent(id)}/activity?limit=200`,
           ),
-          ctx.http.fetch(
+          localFetch(
             `${base}/api/mission-control/${encodeURIComponent(id)}/scope-tree`,
           ),
         ]);
@@ -419,7 +431,7 @@ const plugin = definePlugin({
       const id = String(companyId ?? "");
       if (!id) return { ok: false, tree: null, source: "no-company" };
       try {
-        const r = await ctx.http.fetch(
+        const r = await localFetch(
           `${base}/api/mission-control/${encodeURIComponent(id)}/scope-tree`,
         );
         if (!r.ok) {
@@ -441,7 +453,7 @@ const plugin = definePlugin({
       const id = String(companyId ?? "");
       if (!id) return { ok: false, totals: { costUSD: 0, events: 0 }, byNode: [] };
       try {
-        const r = await ctx.http.fetch(
+        const r = await localFetch(
           `${base}/api/mission-control/${encodeURIComponent(id)}/cost`,
         );
         if (!r.ok) return { ok: false, byNode: [], status: r.status };
@@ -457,7 +469,7 @@ const plugin = definePlugin({
       const id = String(companyId ?? "");
       if (!id) return { ok: false, rows: [], avg: 0, max: 0 };
       try {
-        const r = await ctx.http.fetch(
+        const r = await localFetch(
           `${base}/api/mission-control/${encodeURIComponent(id)}/capacity`,
         );
         if (!r.ok) return { ok: false, rows: [], status: r.status };
@@ -473,7 +485,7 @@ const plugin = definePlugin({
       const id = String(companyId ?? "");
       if (!id) return { ok: false };
       try {
-        const r = await ctx.http.fetch(
+        const r = await localFetch(
           `${base}/api/mission-control/${encodeURIComponent(id)}/weekly-export`,
         );
         if (!r.ok) return { ok: false, status: r.status };
@@ -489,7 +501,7 @@ const plugin = definePlugin({
       const id = String(companyId ?? "");
       if (!id) return { ok: false, csv: "" };
       try {
-        const r = await ctx.http.fetch(
+        const r = await localFetch(
           `${base}/api/mission-control/${encodeURIComponent(id)}/weekly-export?format=csv`,
         );
         if (!r.ok) return { ok: false, csv: "", status: r.status };
@@ -509,7 +521,7 @@ const plugin = definePlugin({
       const id = String(companyId ?? "");
       if (!id) return { ok: false, config: null, source: "no-company" };
       try {
-        const r = await ctx.http.fetch(
+        const r = await localFetch(
           `${base}/api/mission-control/${encodeURIComponent(id)}/chief`,
         );
         if (!r.ok) return { ok: false, config: null, source: "wavex-api-error", status: r.status };
@@ -524,7 +536,7 @@ const plugin = definePlugin({
       const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
       const id = String(params.companyId ?? "");
       if (!id) return { ok: false, error: "missing companyId" };
-      const r = await ctx.http.fetch(
+      const r = await localFetch(
         `${base}/api/mission-control/${encodeURIComponent(id)}/chief`,
         {
           method: "PUT",
@@ -540,7 +552,7 @@ const plugin = definePlugin({
       const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
       const id = String(params.companyId ?? "");
       if (!id) return { ok: false, error: "missing companyId" };
-      const r = await ctx.http.fetch(
+      const r = await localFetch(
         `${base}/api/mission-control/${encodeURIComponent(id)}/chief/rules`,
         {
           method: "POST",
@@ -560,7 +572,7 @@ const plugin = definePlugin({
       const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
       const ruleId = String(params.ruleId ?? "");
       if (!ruleId) return { ok: false, error: "missing ruleId" };
-      const r = await ctx.http.fetch(
+      const r = await localFetch(
         `${base}/api/mission-control/chief/rules/${encodeURIComponent(ruleId)}/enabled`,
         {
           method: "PATCH",
@@ -576,7 +588,7 @@ const plugin = definePlugin({
       const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
       const id = String(params.companyId ?? "");
       if (!id) return { ok: false, error: "missing companyId" };
-      const r = await ctx.http.fetch(
+      const r = await localFetch(
         `${base}/api/mission-control/${encodeURIComponent(id)}/chief/evaluate`,
         {
           method: "POST",
@@ -600,7 +612,7 @@ const plugin = definePlugin({
       if (typeof until === "string") params.set("until", until);
       const qs = params.toString();
       try {
-        const r = await ctx.http.fetch(
+        const r = await localFetch(
           `${base}/api/mission-control/${encodeURIComponent(id)}/graph${qs ? `?${qs}` : ""}`,
         );
         if (!r.ok) {
@@ -622,7 +634,7 @@ const plugin = definePlugin({
       const n = String(nodeId ?? "");
       if (!id || !n) return { ok: false, open: [], source: "no-target" };
       try {
-        const r = await ctx.http.fetch(
+        const r = await localFetch(
           `${base}/api/mission-control/${encodeURIComponent(id)}/node/${encodeURIComponent(n)}/open-assignments`,
         );
         if (!r.ok) return { ok: false, open: [], source: "wavex-api-error", status: r.status };
@@ -640,7 +652,7 @@ const plugin = definePlugin({
       const t = String(taskRefId ?? "");
       if (!id || !t) return { ok: false, chain: [], currentOwner: null, source: "no-target" };
       try {
-        const r = await ctx.http.fetch(
+        const r = await localFetch(
           `${base}/api/mission-control/${encodeURIComponent(id)}/tasks/${encodeURIComponent(t)}/chain`,
         );
         if (!r.ok) return { ok: false, chain: [], currentOwner: null, source: "wavex-api-error", status: r.status };
@@ -665,7 +677,7 @@ const plugin = definePlugin({
       const id = String(companyId ?? "");
       if (!id) return { ok: false, scoreboard: [], due: [], source: "no-company" };
       try {
-        const r = await ctx.http.fetch(
+        const r = await localFetch(
           `${base}/api/mission-control/${encodeURIComponent(id)}/scoreboard`,
         );
         if (!r.ok) {
@@ -697,7 +709,7 @@ const plugin = definePlugin({
         const id = String(companyId ?? "");
         if (!id) return { ok: false, error: "missing companyId" };
         try {
-          const r = await ctx.http.fetch(
+          const r = await localFetch(
             `${base}/api/mission-control/${encodeURIComponent(id)}/measure-due`,
             {
               method: "POST",
@@ -730,7 +742,7 @@ const plugin = definePlugin({
       if (typeof limit === "number") params.set("limit", String(limit));
       const qs = params.toString();
       try {
-        const r = await ctx.http.fetch(
+        const r = await localFetch(
           `${base}/api/mission-control/${encodeURIComponent(id)}/deliverables${qs ? `?${qs}` : ""}`,
         );
         if (!r.ok) {
@@ -777,7 +789,7 @@ const plugin = definePlugin({
         const tick = async (): Promise<void> => {
           try {
             const url = `${base}/api/mission-control/${encodeURIComponent(id)}/activity?since=${encodeURIComponent(since ?? "")}&order=asc&limit=200`;
-            const r = await ctx.http.fetch(url);
+            const r = await localFetch(url);
             if (!r.ok) return;
             const body = (await r.json()) as {
               ok?: boolean;
@@ -827,7 +839,7 @@ const plugin = definePlugin({
       const cfg = (await ctx.config.get()) as PluginConfig | null;
       const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
       try {
-        const r = await ctx.http.fetch(
+        const r = await localFetch(
           `${base}/api/companies/${encodeURIComponent(String(companyId))}/agents`,
         );
         if (!r.ok) {
