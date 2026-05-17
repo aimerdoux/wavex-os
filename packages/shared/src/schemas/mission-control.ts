@@ -67,9 +67,12 @@ export const scopeNode = z.object({
   id: z.string(),
   kind: scopeKind,
   name: z.string(),
+  shortId: z.string(),
+  slug: z.string(),
   parentId: z.string().optional(),
   childIds: z.array(z.string()),
   metadata: scopeMetadata,
+  paperclipAgentId: z.string().optional(),
 });
 
 // ─── Task ───────────────────────────────────────────────────────────────

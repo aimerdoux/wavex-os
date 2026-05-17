@@ -96,6 +96,8 @@ describe("Mission Control round-trip", () => {
       id: "node-sales-dept",
       kind: "department",
       name: "Sales",
+      shortId: "sdept",
+      slug: "sales",
       parentId: "node-org",
       childIds: ["node-sdr-1", "node-sdr-2"],
       metadata: {

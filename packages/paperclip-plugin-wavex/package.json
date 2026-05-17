@@ -1,6 +1,6 @@
 {
   "name": "@wavex-os/paperclip-plugin-wavex",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "WaveX customization layer for Paperclip — branded dashboard, Expert Agents panel, Inception Status, WaveX issue templates. Plugin (not fork) so paperclip subtree updates stay clean.",
   "license": "MIT",
   "private": true,

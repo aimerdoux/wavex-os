@@ -119,6 +119,49 @@ interface SwarmManifestShape {
   agents?: Record<string, SwarmAgentEntry>;
 }
 
+// ─── Identity helpers ──────────────────────────────────────────────────
+
+/** Derive an 8-char short id from a node id. UUIDs collapse to their last
+ *  8 chars; slot-namespaced ids (e.g. `agent:co:cmo`) collapse to the part
+ *  after the last colon. Always returns a stable, human-readable token. */
+function deriveShortId(nodeId: string): string {
+  if (nodeId.includes(":")) {
+    const tail = nodeId.split(":").pop() ?? nodeId;
+    return tail.length <= 8 ? tail : tail.slice(0, 8);
+  }
+  // Looks like a UUID — keep the last 8 hex chars (cleaner than first 8 + …).
+  return nodeId.length <= 8 ? nodeId : nodeId.slice(-8);
+}
+
+/** Kebab-case form of a display name. Strips diacritics, lowercases,
+ *  squashes anything non-alphanumeric into single hyphens, trims edges.
+ *  Used as a URL-safe stable display tag. */
+function slugify(name: string): string {
+  return name
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48) || "node";
+}
+
+/** Final pass over a builder's raw output: stamps every node with
+ *  `shortId` + `slug`. Builders construct nodes without those two fields
+ *  for ergonomics; this guarantees the type contract before return. */
+function decorateIdentity(
+  partial: Omit<ScopeNode, "shortId" | "slug"> & {
+    shortId?: string;
+    slug?: string;
+  },
+): ScopeNode {
+  return {
+    ...partial,
+    shortId: partial.shortId ?? deriveShortId(partial.id),
+    slug: partial.slug ?? slugify(partial.name),
+  } as ScopeNode;
+}
+
 // ─── Tree builders ──────────────────────────────────────────────────────
 
 function emptyMetadata(): ScopeNode["metadata"] {
@@ -142,7 +185,8 @@ async function buildAvatarTree(avatarId: string): Promise<ScopeNode[]> {
     ? `agent:${handoff.conductorAgentId}`
     : null;
 
-  const nodes: ScopeNode[] = [];
+  type Partial = Omit<ScopeNode, "shortId" | "slug">;
+  const nodes: Partial[] = [];
 
   // Root user node
   nodes.push({
@@ -192,10 +236,11 @@ async function buildAvatarTree(avatarId: string): Promise<ScopeNode[]> {
       parentId: conductorId ?? avatarNodeId,
       childIds: [],
       metadata: emptyMetadata(),
+      paperclipAgentId: agentId,
     });
   }
 
-  return nodes;
+  return nodes.map(decorateIdentity);
 }
 
 async function buildCompanyTree(
@@ -221,7 +266,8 @@ async function buildCompanyTree(
   const orgId = `org:${companyId}`;
   const chiefId = `chief:${companyId}`;
 
-  const nodes: ScopeNode[] = [];
+  type Partial = Omit<ScopeNode, "shortId" | "slug">;
+  const nodes: Partial[] = [];
 
   // Root user
   nodes.push({
@@ -243,7 +289,7 @@ async function buildCompanyTree(
   });
 
   // Chief of Staff (always present in Solo/Hybrid per spec)
-  const deptNodes = new Map<string, ScopeNode>();
+  const deptNodes = new Map<string, Partial>();
   const chiefChildren: string[] = [];
 
   // Group agents by department
@@ -298,7 +344,7 @@ async function buildCompanyTree(
     }
   }
 
-  return nodes;
+  return nodes.map(decorateIdentity);
 }
 
 // ─── Public API ─────────────────────────────────────────────────────────

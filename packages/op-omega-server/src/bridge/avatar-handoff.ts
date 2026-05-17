@@ -311,16 +311,20 @@ export async function handoffAvatarToPaperclip(avatarId: string): Promise<Avatar
       });
       conductorAgentId = conductor.agentId;
       slotToPaperclipId["conductor"] = conductorAgentId;
+      // Mirror to MC using the scope-tree-canonical id (prefixed with
+      // "agent:") so renderers resolve the actor's display name immediately.
+      const conductorNodeId = `agent:${conductorAgentId}`;
       await mirrorToMissionControl({
         companyId: paperclipCompanyId,
         instanceId: avatarId,
-        actorNodeId: conductorAgentId,
+        actorNodeId: conductorNodeId,
         action: "wavex.avatar_handoff.conductor_hired",
         modeContext: "avatar",
         subjectRef: {
           kind: "node",
-          id: conductorAgentId,
+          id: conductorNodeId,
           avatarId,
+          paperclipAgentId: conductorAgentId,
         },
       });
     } catch (e) {
@@ -369,17 +373,20 @@ export async function handoffAvatarToPaperclip(avatarId: string): Promise<Avatar
       });
       slotToPaperclipId[provider] = hire.agentId;
       report.created.push({ provider, agentId: hire.agentId, status: hire.status });
+      const subagentNodeId = `agent:${hire.agentId}`;
+      const conductorNodeIdForChild = `agent:${conductorAgentId}`;
       await mirrorToMissionControl({
         companyId: paperclipCompanyId,
         instanceId: avatarId,
-        actorNodeId: hire.agentId,
+        actorNodeId: subagentNodeId,
         action: "wavex.avatar_handoff.subagent_hired",
         modeContext: "avatar",
         subjectRef: {
           kind: "node",
-          id: hire.agentId,
-          toNodeId: conductorAgentId,
+          id: subagentNodeId,
+          toNodeId: conductorNodeIdForChild,
           provider,
+          paperclipAgentId: hire.agentId,
         },
       });
     } catch (e) {

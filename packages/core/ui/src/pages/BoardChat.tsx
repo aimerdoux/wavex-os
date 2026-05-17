@@ -105,7 +105,34 @@ export function BoardChat() {
   const selectedCompany = companies.find((c) => c.id === selectedCompanyId) ?? null;
   const wavexId = deriveWavexCompanyId(selectedCompany);
   const [draft, setDraft] = useState("");
-  const [revealedIds, setRevealedIds] = useState<Set<string>>(new Set());
+  // Persist which assistant messages have already finished their char-by-char
+  // reveal so navigating away + back doesn't replay the animation. Keyed by
+  // wavex company id; lives in sessionStorage (cleared with the tab, which is
+  // fine — the animation only matters relative to the operator's last view).
+  const revealedStorageKey = useMemo(
+    () => (wavexId ? `kernel:revealed:${wavexId}` : "kernel:revealed:none"),
+    [wavexId],
+  );
+  const [revealedIds, setRevealedIds] = useState<Set<string>>(() => {
+    if (typeof window === "undefined") return new Set();
+    try {
+      const raw = window.sessionStorage.getItem(revealedStorageKey);
+      return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+  useEffect(() => {
+    try {
+      window.sessionStorage.setItem(
+        revealedStorageKey,
+        JSON.stringify(Array.from(revealedIds)),
+      );
+    } catch {
+      // sessionStorage quota / disabled — silently drop persistence; the
+      // animation just replays on remount, which is the pre-fix behavior.
+    }
+  }, [revealedIds, revealedStorageKey]);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const qc = useQueryClient();
 
@@ -282,7 +309,7 @@ export function BoardChat() {
               return (
                 <div
                   key={i}
-                  className="ml-auto max-w-[85%] rounded-lg border border-sky-500/25 bg-sky-500/10 px-3.5 py-2.5 text-sm whitespace-pre-wrap text-foreground"
+                  className="ml-auto max-w-[85%] rounded-2xl rounded-br-md border border-sky-500/25 bg-sky-500/10 px-3.5 py-2.5 text-sm whitespace-pre-wrap text-foreground"
                 >
                   {m.text}
                 </div>

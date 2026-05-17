@@ -1116,17 +1116,28 @@ export async function handoffToPaperclip(
       await updateHandoffProgress(wavexCompanyId, slot, { status: "hired", agentId: out.agentId }, completed);
       // Mission Control mirror — surfaces "Sales Agent joined under Sales"
       // (or equivalent) in the Stream widget. Best-effort, never throws.
+      //
+      // Use the canonical slot-namespaced node id (matches what the
+      // ScopeTree builder produces) so the renderer resolves the actor's
+      // display name + parent department immediately instead of falling
+      // back to the raw Paperclip UUID. The real Paperclip agent id is
+      // still preserved in subjectRef.paperclipAgentId for drill-down.
+      const slotNodeId = `agent:${wavexCompanyId}:${slot}`;
+      const slotParentId = entry.department
+        ? `dept:${wavexCompanyId}:${entry.department}`
+        : `chief:${wavexCompanyId}`;
       await mirrorToMissionControl({
         companyId: paperclipCompanyId,
         instanceId: wavexCompanyId,
-        actorNodeId: out.agentId,
+        actorNodeId: slotNodeId,
         action: "wavex.paperclip_handoff.agent_hired",
         modeContext: "solo_founder",
         subjectRef: {
           kind: "node",
-          id: out.agentId,
-          toNodeId: reportsToId ?? undefined,
+          id: slotNodeId,
+          toNodeId: slotParentId,
           slot,
+          paperclipAgentId: out.agentId,
         },
       });
     } catch (e) {
@@ -1144,6 +1155,18 @@ export async function handoffToPaperclip(
     createdAt: existing?.createdAt ?? new Date().toISOString(),
     agents: slotToPaperclipId,
   });
+
+  // Invalidate the ScopeTree cache so Mission Control widgets pick up
+  // the newly hired agents on the next render (5-minute TTL otherwise).
+  try {
+    const { invalidateScopeTree } = await import(
+      "../mission-control/scope-tree-cache.js"
+    );
+    invalidateScopeTree(wavexCompanyId);
+  } catch {
+    // Cache lives in the same process; the import can't fail at runtime,
+    // but the try-catch is defensive against split-bundle scenarios.
+  }
 
   // Apply --mcp-config to every freshly-mapped agent so their next spawn
   // ignores the operator's global MCP registry. Best-effort: failures here

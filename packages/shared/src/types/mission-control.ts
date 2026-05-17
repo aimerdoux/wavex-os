@@ -39,9 +39,21 @@ export interface ScopeNode {
   id: string;
   kind: ScopeKind;
   name: string;
+  /** Stable 8-char short id derived from `id` (last 8 chars of a UUID,
+   *  or the part after the last `:` for slot-namespaced ids). Always
+   *  populated by the ScopeTree builder so widgets never need to fall
+   *  back to the raw UUID for display. */
+  shortId: string;
+  /** Kebab-case form of `name`. Useful for URL-safe deep links + as a
+   *  stable display tag. Always populated by the builder. */
+  slug: string;
   parentId?: string;
   childIds: string[];
   metadata: ScopeMetadata;
+  /** Optional cross-store alias: the Paperclip `agents` table primary
+   *  key when this node mirrors a real agent. Widgets may use this to
+   *  fetch the agent profile via the host's plugin bridge. */
+  paperclipAgentId?: string;
 }
 
 export type ScopeKind =

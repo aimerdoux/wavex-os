@@ -34,14 +34,33 @@ export type EventRenderer = (event: ActivityEvent, ctx: RenderContext) => string
 
 // ─── Lookup helpers ─────────────────────────────────────────────────────
 
+/** Derive an 8-char short id from any node id (UUID or slot-namespaced).
+ *  Same algorithm as the server-side ScopeTree builder so client + server
+ *  agree on what "agent_a3f2" means even when the scope tree hasn't been
+ *  hydrated for this widget yet. */
+export function deriveShortId(nodeId: string): string {
+  if (nodeId.includes(":")) {
+    const tail = nodeId.split(":").pop() ?? nodeId;
+    return tail.length <= 8 ? tail : tail.slice(0, 8);
+  }
+  return nodeId.length <= 8 ? nodeId : nodeId.slice(-8);
+}
+
 export function nodeName(nodeId: string | undefined, ctx: RenderContext): string {
   if (!nodeId) return "Unknown";
   const node = ctx.scopeTree.byId.get(nodeId);
-  if (!node) return nodeId; // fall back to ID so unknowns don't silently disappear
-  // Mode-aware: in Solo Founder, a chief node is "Chief of Staff"; in Avatar,
-  // an avatar node is "Sales Avatar" etc. Renderers can compose ${nodeName(...)}
-  // without worrying about kind.
-  return node.name;
+  if (node) return node.name;
+  // Scope-tree cache miss: render the short id instead of the raw UUID so
+  // the UI never leaks 36-char identifiers. The full id is still available
+  // for tooltip/debug surfaces via `nodeId` directly.
+  return deriveShortId(nodeId);
+}
+
+/** Returns the node's shortId, or falls back to deriving one from the id. */
+export function nodeShortId(nodeId: string | undefined, ctx: RenderContext): string {
+  if (!nodeId) return "—";
+  const node = ctx.scopeTree.byId.get(nodeId);
+  return node?.shortId ?? deriveShortId(nodeId);
 }
 
 export function kpiName(kpiId: string | undefined, ctx: RenderContext): string {

@@ -128,13 +128,27 @@ function severityColor(severity: ActivityEvent["severity"]): string {
   }
 }
 
+function deriveShortIdClient(nodeId: string): string {
+  if (nodeId.includes(":")) {
+    const tail = nodeId.split(":").pop() ?? nodeId;
+    return tail.length <= 8 ? tail : tail.slice(0, 8);
+  }
+  return nodeId.length <= 8 ? nodeId : nodeId.slice(-8);
+}
+
 function buildCtx(data: ActivityResponse): RenderContext {
   const byId = new Map<string, ScopeNode>();
   for (const n of data.scopeNodes) {
+    const anyN = n as unknown as ScopeNode & {
+      shortId?: string;
+      slug?: string;
+    };
     byId.set(n.id, {
       id: n.id,
       kind: n.kind,
       name: n.name,
+      shortId: anyN.shortId ?? deriveShortIdClient(n.id),
+      slug: anyN.slug ?? n.name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
       parentId: n.parentId,
       childIds: n.childIds ?? [],
       metadata: {
