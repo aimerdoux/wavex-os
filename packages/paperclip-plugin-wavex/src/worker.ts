@@ -433,6 +433,31 @@ const plugin = definePlugin({
     });
 
     // -------------------------------------------------------------------
+    // Mission Control — Phase 5 accountability graph.
+    // -------------------------------------------------------------------
+    ctx.data.register("mission-control-graph", async ({ companyId, since, until }) => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      const id = String(companyId ?? "");
+      if (!id) return { ok: false, graph: null, source: "no-company" };
+      const params = new URLSearchParams();
+      if (typeof since === "string") params.set("since", since);
+      if (typeof until === "string") params.set("until", until);
+      const qs = params.toString();
+      try {
+        const r = await ctx.http.fetch(
+          `${base}/api/mission-control/${encodeURIComponent(id)}/graph${qs ? `?${qs}` : ""}`,
+        );
+        if (!r.ok) {
+          return { ok: false, graph: null, source: "wavex-api-error", status: r.status };
+        }
+        return await r.json();
+      } catch (err) {
+        return { ok: false, graph: null, source: "exception", error: String(err) };
+      }
+    });
+
+    // -------------------------------------------------------------------
     // Mission Control — Phase 4 chain handlers.
     // -------------------------------------------------------------------
     ctx.data.register("mission-control-node-open-assignments", async ({ companyId, nodeId }) => {

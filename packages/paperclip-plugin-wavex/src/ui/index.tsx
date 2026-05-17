@@ -22,6 +22,8 @@ export { MissionControlDeliverablesWidget } from "./MissionControlDeliverablesWi
 export { MissionControlScoreboardWidget } from "./MissionControlScoreboardWidget.js";
 // Mission Control — Phase 4 Node profile + assignment chain inspector.
 export { MissionControlNodeProfileWidget } from "./MissionControlNodeProfileWidget.js";
+// Mission Control — Phase 5 Accountability Graph (SVG force layout).
+export { MissionControlGraphWidget } from "./MissionControlGraphWidget.js";
 
 const WAVEX_COLOR = "#00d4ff";
 const WAVEX_BG = "color-mix(in srgb, #00d4ff 6%, transparent)";

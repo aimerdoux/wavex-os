@@ -32,6 +32,8 @@ const MC_DELIVERABLES_SLOT = "wavex-mission-control-deliverables";
 const MC_SCOREBOARD_SLOT = "wavex-mission-control-scoreboard";
 // Mission Control Phase 4 — Node profile + assignment chain inspector.
 const MC_NODE_PROFILE_SLOT = "wavex-mission-control-node-profile";
+// Mission Control Phase 5 — Accountability Graph (force-directed SVG).
+const MC_GRAPH_SLOT = "wavex-mission-control-graph";
 
 const manifest: PaperclipPluginManifestV1 = {
   id: PLUGIN_ID,
@@ -88,6 +90,14 @@ const manifest: PaperclipPluginManifestV1 = {
         id: MC_NODE_PROFILE_SLOT,
         displayName: "Mission Control — Node Profile",
         exportName: "MissionControlNodeProfileWidget",
+      },
+      // Phase 5 — Accountability graph (force-directed SVG with
+      // structural + work-flow edges, time scrubber).
+      {
+        type: "dashboardWidget",
+        id: MC_GRAPH_SLOT,
+        displayName: "Mission Control — Accountability Graph",
+        exportName: "MissionControlGraphWidget",
       },
       {
         type: "dashboardWidget",

@@ -43,6 +43,7 @@ import {
   type AppendLinkInput,
   type AssignmentLinkKind,
 } from "../mission-control/assignment-chain.js";
+import { buildAccountabilityGraph } from "../mission-control/graph.js";
 import type {
   DeliverableKind,
   DeliverableStatus,
@@ -591,6 +592,44 @@ export function registerMissionControlRoutes(app: FastifyInstance): void {
       }
     },
   );
+
+  // ── Accountability graph (Phase 5) ────────────────────────────────────
+  app.get("/api/mission-control/:companyId/graph", async (req, reply) => {
+    const ar = authReq(req);
+    try {
+      assertBoard(ar);
+    } catch (e) {
+      if (e instanceof AuthError)
+        return reply.status(e.statusCode).send({ error: e.message });
+      throw e;
+    }
+    const { companyId } = req.params as { companyId: string };
+    assertCompanyAccess(ar, companyId);
+    await ensureBootstrap();
+    const q = req.query as Record<string, unknown>;
+    const since = parseDate(q.since);
+    const until = parseDate(q.until);
+    const kpiId = typeof q.kpiId === "string" ? q.kpiId : undefined;
+    try {
+      const graph = await buildAccountabilityGraph({
+        companyId,
+        since,
+        until,
+        kpiId,
+      });
+      if (!graph) {
+        return reply
+          .status(404)
+          .send({ ok: false, error: "no scope tree for instance" });
+      }
+      return { ok: true, graph };
+    } catch (e) {
+      return reply.status(503).send({
+        ok: false,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  });
 
   // ── GET /api/mission-control/deliverable/:id/folder ───────────────────
   //   Returns the on-disk folder containing the artifact so the UI can
