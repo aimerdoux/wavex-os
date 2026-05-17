@@ -26,9 +26,19 @@ import {
   queryDeliverables,
   type QueryDeliverablesInput,
 } from "../mission-control/deliverables.js";
+import {
+  announceDueImpacts,
+  declareKpiImpact,
+  getScoreboard,
+  listDueKpiImpacts,
+  queryKpiImpacts,
+  recordKpiMeasurement,
+  type DeclareKpiImpactInput,
+} from "../mission-control/kpi-impacts.js";
 import type {
   DeliverableKind,
   DeliverableStatus,
+  PaperclipMode,
 } from "@wavex-os/shared/types/mission-control";
 
 let bootstrapped = false;
@@ -289,6 +299,178 @@ export function registerMissionControlRoutes(app: FastifyInstance): void {
       });
     }
   });
+
+  // ── KPI impacts ───────────────────────────────────────────────────────
+  app.post(
+    "/api/mission-control/:companyId/kpi-impacts",
+    async (req, reply) => {
+      const ar = authReq(req);
+      try {
+        assertBoard(ar);
+      } catch (e) {
+        if (e instanceof AuthError)
+          return reply.status(e.statusCode).send({ error: e.message });
+        throw e;
+      }
+      const { companyId } = req.params as { companyId: string };
+      assertCompanyAccess(ar, companyId);
+      await ensureBootstrap();
+      const body = req.body as Partial<DeclareKpiImpactInput> | null;
+      if (
+        !body ||
+        typeof body.kpiId !== "string" ||
+        typeof body.taskRefId !== "string" ||
+        typeof body.taskRefType !== "string" ||
+        typeof body.scopeNodeId !== "string" ||
+        typeof body.estimatedDelta !== "number" ||
+        typeof body.unit !== "string" ||
+        typeof body.timeHorizon !== "string" ||
+        typeof body.confidence !== "number" ||
+        typeof body.rationale !== "string" ||
+        typeof body.direction !== "string"
+      ) {
+        return reply.status(400).send({
+          ok: false,
+          error: "missing required fields",
+        });
+      }
+      try {
+        const impact = await declareKpiImpact({
+          ...body,
+          companyId,
+        } as DeclareKpiImpactInput);
+        return { ok: true, impact };
+      } catch (e) {
+        return reply.status(503).send({
+          ok: false,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
+    },
+  );
+
+  app.get(
+    "/api/mission-control/:companyId/kpi-impacts",
+    async (req, reply) => {
+      const ar = authReq(req);
+      try {
+        assertBoard(ar);
+      } catch (e) {
+        if (e instanceof AuthError)
+          return reply.status(e.statusCode).send({ error: e.message });
+        throw e;
+      }
+      const { companyId } = req.params as { companyId: string };
+      assertCompanyAccess(ar, companyId);
+      await ensureBootstrap();
+      const q = req.query as Record<string, unknown>;
+      const items = await queryKpiImpacts({
+        companyId,
+        kpiId: typeof q.kpiId === "string" ? q.kpiId : undefined,
+        taskRefId:
+          typeof q.taskRefId === "string" ? q.taskRefId : undefined,
+        scopeNodeId:
+          typeof q.scopeNodeId === "string" ? q.scopeNodeId : undefined,
+        unmeasuredOnly: q.unmeasuredOnly === "1" || q.unmeasuredOnly === "true",
+      });
+      return { ok: true, impacts: items };
+    },
+  );
+
+  app.post(
+    "/api/mission-control/kpi-impacts/:id/measure",
+    async (req, reply) => {
+      const ar = authReq(req);
+      try {
+        assertBoard(ar);
+      } catch (e) {
+        if (e instanceof AuthError)
+          return reply.status(e.statusCode).send({ error: e.message });
+        throw e;
+      }
+      const { id } = req.params as { id: string };
+      await ensureBootstrap();
+      const body = req.body as
+        | { actualDelta?: number; recordedByNodeId?: string; modeContext?: PaperclipMode }
+        | null;
+      if (!body || typeof body.actualDelta !== "number") {
+        return reply.status(400).send({
+          ok: false,
+          error: "actualDelta is required",
+        });
+      }
+      try {
+        const result = await recordKpiMeasurement({
+          impactId: id,
+          actualDelta: body.actualDelta,
+          modeContext: body.modeContext ?? "solo_founder",
+          recordedByNodeId: body.recordedByNodeId ?? "system",
+        });
+        if (!result) {
+          return reply.status(404).send({ ok: false, error: "impact not found" });
+        }
+        return { ok: true, ...result };
+      } catch (e) {
+        return reply.status(503).send({
+          ok: false,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
+    },
+  );
+
+  app.get("/api/mission-control/:companyId/scoreboard", async (req, reply) => {
+    const ar = authReq(req);
+    try {
+      assertBoard(ar);
+    } catch (e) {
+      if (e instanceof AuthError)
+        return reply.status(e.statusCode).send({ error: e.message });
+      throw e;
+    }
+    const { companyId } = req.params as { companyId: string };
+    assertCompanyAccess(ar, companyId);
+    await ensureBootstrap();
+    try {
+      const [scoreboard, due] = await Promise.all([
+        getScoreboard(companyId),
+        listDueKpiImpacts(companyId),
+      ]);
+      return { ok: true, scoreboard, due };
+    } catch (e) {
+      return reply.status(503).send({
+        ok: false,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  });
+
+  // POST /api/mission-control/:companyId/measure-due — emits an MC event
+  // for every impact that's due-but-not-measured. The scheduler can call
+  // this on its tick; operators can fire it by hand to populate the
+  // Stream with "measurement due" notices.
+  app.post(
+    "/api/mission-control/:companyId/measure-due",
+    async (req, reply) => {
+      const ar = authReq(req);
+      try {
+        assertBoard(ar);
+      } catch (e) {
+        if (e instanceof AuthError)
+          return reply.status(e.statusCode).send({ error: e.message });
+        throw e;
+      }
+      const { companyId } = req.params as { companyId: string };
+      assertCompanyAccess(ar, companyId);
+      await ensureBootstrap();
+      const body = req.body as { modeContext?: PaperclipMode } | null;
+      const announced = await announceDueImpacts(
+        companyId,
+        body?.modeContext ?? "solo_founder",
+      );
+      return { ok: true, announced };
+    },
+  );
 
   // ── GET /api/mission-control/deliverable/:id/folder ───────────────────
   //   Returns the on-disk folder containing the artifact so the UI can

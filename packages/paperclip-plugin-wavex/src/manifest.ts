@@ -28,6 +28,8 @@ const AGENT_STATUS_SLOT = "wavex-agent-status";
 const MC_STREAM_SLOT = "wavex-mission-control-stream";
 // Mission Control Phase 2 — Deliverables ledger with kind-aware inspector.
 const MC_DELIVERABLES_SLOT = "wavex-mission-control-deliverables";
+// Mission Control Phase 3 — KPI scoreboard (attainment per KPI).
+const MC_SCOREBOARD_SLOT = "wavex-mission-control-scoreboard";
 
 const manifest: PaperclipPluginManifestV1 = {
   id: PLUGIN_ID,
@@ -68,6 +70,14 @@ const manifest: PaperclipPluginManifestV1 = {
         id: MC_DELIVERABLES_SLOT,
         displayName: "Mission Control — Deliverables",
         exportName: "MissionControlDeliverablesWidget",
+      },
+      // Phase 3 — KPI scoreboard: attainment ratio per KPI from the
+      // ExpectedKpiImpact ledger.
+      {
+        type: "dashboardWidget",
+        id: MC_SCOREBOARD_SLOT,
+        displayName: "Mission Control — KPI Scoreboard",
+        exportName: "MissionControlScoreboardWidget",
       },
       {
         type: "dashboardWidget",

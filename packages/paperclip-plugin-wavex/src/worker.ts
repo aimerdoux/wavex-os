@@ -433,6 +433,63 @@ const plugin = definePlugin({
     });
 
     // -------------------------------------------------------------------
+    // Mission Control — KPI scoreboard. Backs the Phase 3 widget.
+    // -------------------------------------------------------------------
+    ctx.data.register("mission-control-scoreboard", async ({ companyId }) => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      const id = String(companyId ?? "");
+      if (!id) return { ok: false, scoreboard: [], due: [], source: "no-company" };
+      try {
+        const r = await ctx.http.fetch(
+          `${base}/api/mission-control/${encodeURIComponent(id)}/scoreboard`,
+        );
+        if (!r.ok) {
+          return { ok: false, scoreboard: [], due: [], source: "wavex-api-error", status: r.status };
+        }
+        const body = (await r.json()) as {
+          ok?: boolean;
+          scoreboard?: unknown[];
+          due?: unknown[];
+        };
+        return {
+          ok: body.ok !== false,
+          scoreboard: Array.isArray(body.scoreboard) ? body.scoreboard : [],
+          due: Array.isArray(body.due) ? body.due : [],
+          source: "wavex-api",
+        };
+      } catch (err) {
+        return { ok: false, scoreboard: [], due: [], source: "exception", error: String(err) };
+      }
+    });
+
+    // Manual "announce all due impacts" — fires Stream notices for any
+    // unmeasured impacts whose horizon elapsed.
+    ctx.actions.register(
+      "mission-control-announce-due",
+      async ({ companyId }) => {
+        const cfg = (await ctx.config.get()) as PluginConfig | null;
+        const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+        const id = String(companyId ?? "");
+        if (!id) return { ok: false, error: "missing companyId" };
+        try {
+          const r = await ctx.http.fetch(
+            `${base}/api/mission-control/${encodeURIComponent(id)}/measure-due`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({}),
+            },
+          );
+          if (!r.ok) return { ok: false, status: r.status };
+          return await r.json();
+        } catch (err) {
+          return { ok: false, error: String(err) };
+        }
+      },
+    );
+
+    // -------------------------------------------------------------------
     // Mission Control — deliverables list. Backs the Phase 2 table widget.
     // -------------------------------------------------------------------
     ctx.data.register("mission-control-deliverables", async ({ companyId, kind, taskRefId, status, limit }) => {
