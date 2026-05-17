@@ -433,6 +433,93 @@ const plugin = definePlugin({
     });
 
     // -------------------------------------------------------------------
+    // Mission Control — Phase 6 Chief of Staff.
+    // -------------------------------------------------------------------
+    ctx.data.register("mission-control-chief", async ({ companyId }) => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      const id = String(companyId ?? "");
+      if (!id) return { ok: false, config: null, source: "no-company" };
+      try {
+        const r = await ctx.http.fetch(
+          `${base}/api/mission-control/${encodeURIComponent(id)}/chief`,
+        );
+        if (!r.ok) return { ok: false, config: null, source: "wavex-api-error", status: r.status };
+        return await r.json();
+      } catch (err) {
+        return { ok: false, config: null, source: "exception", error: String(err) };
+      }
+    });
+
+    ctx.actions.register("mission-control-chief-upsert-config", async (params) => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      const id = String(params.companyId ?? "");
+      if (!id) return { ok: false, error: "missing companyId" };
+      const r = await ctx.http.fetch(
+        `${base}/api/mission-control/${encodeURIComponent(id)}/chief`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode: params.mode ?? "solo_founder", enabled: params.enabled ?? true }),
+        },
+      );
+      return r.ok ? await r.json() : { ok: false, status: r.status };
+    });
+
+    ctx.actions.register("mission-control-chief-add-rule", async (params) => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      const id = String(params.companyId ?? "");
+      if (!id) return { ok: false, error: "missing companyId" };
+      const r = await ctx.http.fetch(
+        `${base}/api/mission-control/${encodeURIComponent(id)}/chief/rules`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: params.name,
+            triggerKind: params.triggerKind,
+            triggerConfig: params.triggerConfig ?? {},
+          }),
+        },
+      );
+      return r.ok ? await r.json() : { ok: false, status: r.status };
+    });
+
+    ctx.actions.register("mission-control-chief-toggle-rule", async (params) => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      const ruleId = String(params.ruleId ?? "");
+      if (!ruleId) return { ok: false, error: "missing ruleId" };
+      const r = await ctx.http.fetch(
+        `${base}/api/mission-control/chief/rules/${encodeURIComponent(ruleId)}/enabled`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled: Boolean(params.enabled) }),
+        },
+      );
+      return r.ok ? await r.json() : { ok: false, status: r.status };
+    });
+
+    ctx.actions.register("mission-control-chief-evaluate", async (params) => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      const id = String(params.companyId ?? "");
+      if (!id) return { ok: false, error: "missing companyId" };
+      const r = await ctx.http.fetch(
+        `${base}/api/mission-control/${encodeURIComponent(id)}/chief/evaluate`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ modeContext: params.modeContext ?? "solo_founder" }),
+        },
+      );
+      return r.ok ? await r.json() : { ok: false, status: r.status };
+    });
+
+    // -------------------------------------------------------------------
     // Mission Control — Phase 5 accountability graph.
     // -------------------------------------------------------------------
     ctx.data.register("mission-control-graph", async ({ companyId, since, until }) => {

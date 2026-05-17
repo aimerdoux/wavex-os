@@ -34,6 +34,8 @@ const MC_SCOREBOARD_SLOT = "wavex-mission-control-scoreboard";
 const MC_NODE_PROFILE_SLOT = "wavex-mission-control-node-profile";
 // Mission Control Phase 5 — Accountability Graph (force-directed SVG).
 const MC_GRAPH_SLOT = "wavex-mission-control-graph";
+// Mission Control Phase 6 — Chief of Staff config + rules + evaluator.
+const MC_CHIEF_SLOT = "wavex-mission-control-chief";
 
 const manifest: PaperclipPluginManifestV1 = {
   id: PLUGIN_ID,
@@ -98,6 +100,13 @@ const manifest: PaperclipPluginManifestV1 = {
         id: MC_GRAPH_SLOT,
         displayName: "Mission Control — Accountability Graph",
         exportName: "MissionControlGraphWidget",
+      },
+      // Phase 6 — Chief of Staff config + origination rules + evaluator.
+      {
+        type: "dashboardWidget",
+        id: MC_CHIEF_SLOT,
+        displayName: "Mission Control — Chief of Staff",
+        exportName: "MissionControlChiefWidget",
       },
       {
         type: "dashboardWidget",

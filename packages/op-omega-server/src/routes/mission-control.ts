@@ -44,6 +44,18 @@ import {
   type AssignmentLinkKind,
 } from "../mission-control/assignment-chain.js";
 import { buildAccountabilityGraph } from "../mission-control/graph.js";
+import {
+  addOriginationRule,
+  evaluateChiefTriggers,
+  getChiefConfig,
+  listOriginationRules,
+  setRuleEnabled,
+  upsertChiefConfig,
+  type UpsertChiefConfigInput,
+} from "../mission-control/chief-of-staff.js";
+import type {
+  ChiefOriginationRule,
+} from "@wavex-os/shared/types/mission-control";
 import type {
   DeliverableKind,
   DeliverableStatus,
@@ -590,6 +602,184 @@ export function registerMissionControlRoutes(app: FastifyInstance): void {
           error: e instanceof Error ? e.message : String(e),
         });
       }
+    },
+  );
+
+  // ── Chief of Staff (Phase 6) ──────────────────────────────────────────
+  app.get("/api/mission-control/:companyId/chief", async (req, reply) => {
+    const ar = authReq(req);
+    try {
+      assertBoard(ar);
+    } catch (e) {
+      if (e instanceof AuthError)
+        return reply.status(e.statusCode).send({ error: e.message });
+      throw e;
+    }
+    const { companyId } = req.params as { companyId: string };
+    assertCompanyAccess(ar, companyId);
+    await ensureBootstrap();
+    try {
+      const cfg = await getChiefConfig(companyId);
+      return { ok: true, config: cfg };
+    } catch (e) {
+      return reply.status(503).send({
+        ok: false,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  });
+
+  app.put("/api/mission-control/:companyId/chief", async (req, reply) => {
+    const ar = authReq(req);
+    try {
+      assertBoard(ar);
+    } catch (e) {
+      if (e instanceof AuthError)
+        return reply.status(e.statusCode).send({ error: e.message });
+      throw e;
+    }
+    const { companyId } = req.params as { companyId: string };
+    assertCompanyAccess(ar, companyId);
+    await ensureBootstrap();
+    const body = req.body as Partial<UpsertChiefConfigInput> | null;
+    if (!body || typeof body.mode !== "string") {
+      return reply.status(400).send({ ok: false, error: "mode is required" });
+    }
+    try {
+      const cfg = await upsertChiefConfig({
+        ...body,
+        instanceId: companyId,
+      } as UpsertChiefConfigInput);
+      return { ok: true, config: cfg };
+    } catch (e) {
+      return reply.status(503).send({
+        ok: false,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  });
+
+  app.post(
+    "/api/mission-control/:companyId/chief/rules",
+    async (req, reply) => {
+      const ar = authReq(req);
+      try {
+        assertBoard(ar);
+      } catch (e) {
+        if (e instanceof AuthError)
+          return reply.status(e.statusCode).send({ error: e.message });
+        throw e;
+      }
+      const { companyId } = req.params as { companyId: string };
+      assertCompanyAccess(ar, companyId);
+      await ensureBootstrap();
+      const body = req.body as Partial<ChiefOriginationRule> | null;
+      if (
+        !body ||
+        typeof body.name !== "string" ||
+        typeof body.triggerKind !== "string"
+      ) {
+        return reply.status(400).send({
+          ok: false,
+          error: "name + triggerKind required",
+        });
+      }
+      try {
+        const rule = await addOriginationRule({
+          instanceId: companyId,
+          name: body.name,
+          description: body.description ?? "",
+          triggerKind: body.triggerKind as ChiefOriginationRule["triggerKind"],
+          triggerConfig: body.triggerConfig ?? {},
+          taskTemplate: body.taskTemplate ?? {
+            title: body.name,
+            description: body.description ?? "",
+            assigneeStrategy: "least_loaded_in_scope",
+          },
+          enabled: body.enabled ?? true,
+        });
+        return { ok: true, rule };
+      } catch (e) {
+        return reply.status(503).send({
+          ok: false,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
+    },
+  );
+
+  app.get(
+    "/api/mission-control/:companyId/chief/rules",
+    async (req, reply) => {
+      const ar = authReq(req);
+      try {
+        assertBoard(ar);
+      } catch (e) {
+        if (e instanceof AuthError)
+          return reply.status(e.statusCode).send({ error: e.message });
+        throw e;
+      }
+      const { companyId } = req.params as { companyId: string };
+      assertCompanyAccess(ar, companyId);
+      await ensureBootstrap();
+      const rules = await listOriginationRules(companyId);
+      return { ok: true, rules };
+    },
+  );
+
+  app.patch(
+    "/api/mission-control/chief/rules/:ruleId/enabled",
+    async (req, reply) => {
+      const ar = authReq(req);
+      try {
+        assertBoard(ar);
+      } catch (e) {
+        if (e instanceof AuthError)
+          return reply.status(e.statusCode).send({ error: e.message });
+        throw e;
+      }
+      const { ruleId } = req.params as { ruleId: string };
+      await ensureBootstrap();
+      const body = req.body as { enabled?: boolean } | null;
+      if (!body || typeof body.enabled !== "boolean") {
+        return reply
+          .status(400)
+          .send({ ok: false, error: "enabled boolean required" });
+      }
+      const updated = await setRuleEnabled(ruleId, body.enabled);
+      if (!updated) {
+        return reply.status(404).send({ ok: false, error: "rule not found" });
+      }
+      return { ok: true };
+    },
+  );
+
+  app.post(
+    "/api/mission-control/:companyId/chief/evaluate",
+    async (req, reply) => {
+      const ar = authReq(req);
+      try {
+        assertBoard(ar);
+      } catch (e) {
+        if (e instanceof AuthError)
+          return reply.status(e.statusCode).send({ error: e.message });
+        throw e;
+      }
+      const { companyId } = req.params as { companyId: string };
+      assertCompanyAccess(ar, companyId);
+      await ensureBootstrap();
+      const body = req.body as { modeContext?: string; actorNodeId?: string } | null;
+      const result = await evaluateChiefTriggers({
+        instanceId: companyId,
+        modeContext:
+          (body?.modeContext as
+            | "avatar"
+            | "solo_founder"
+            | "hybrid"
+            | undefined) ?? "solo_founder",
+        actorNodeId: body?.actorNodeId,
+      });
+      return { ok: true, result };
     },
   );
 
