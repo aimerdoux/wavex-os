@@ -16,6 +16,8 @@ import type {
 
 // Mission Control — Phase 1 Stream widget (plain-language activity feed).
 export { MissionControlStreamWidget } from "./MissionControlStreamWidget.js";
+// Mission Control — Phase 2 Deliverables table + inspector drawer.
+export { MissionControlDeliverablesWidget } from "./MissionControlDeliverablesWidget.js";
 
 const WAVEX_COLOR = "#00d4ff";
 const WAVEX_BG = "color-mix(in srgb, #00d4ff 6%, transparent)";

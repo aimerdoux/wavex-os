@@ -20,6 +20,7 @@ import { microsoftCalendarProvider } from "./calendar/microsoft-provider.js";
 import type { CalendarEvent, CalendarProvider, CalendarRecommendation } from "./calendar/types.js";
 import type { AvatarApproval } from "./mail-triage.js";
 import { mirrorToMissionControl } from "../../mission-control/mirror.js";
+import { writeDeliverable } from "../../mission-control/deliverables.js";
 
 interface RunResult {
   avatarId: string;
@@ -252,6 +253,39 @@ export async function runCalendarTriage(
         suggested: rec.suggested,
         confidence: rec.confidence,
       });
+      try {
+        await writeDeliverable({
+          companyId: handoff.paperclipCompanyId,
+          instanceId: avatarId,
+          modeContext: "avatar",
+          taskRefType: "avatar_approval",
+          taskRefId: id,
+          producedByNodeId: agentId,
+          kind: "meeting_artifact",
+          title: `Invite response: ${event.summary ?? event.eventId}`,
+          description: `Recommended: ${rec.suggested}`,
+          previewText: rec.draft_message?.slice(0, 280) ?? rec.reasoning?.slice(0, 280),
+          mimeType: "text/plain",
+          status: "draft",
+          templateUsed: `avatar.${provider.id}.invite_response`,
+          payload: {
+            eventId: event.eventId,
+            summary: event.summary,
+            organizer: event.organizer,
+            suggested: rec.suggested,
+            proposed_times: rec.proposed_times,
+            draft_message: rec.draft_message,
+            confidence: rec.confidence,
+          },
+          taskRef: {
+            id,
+            title: `Respond to ${event.organizer ?? "invite"}`,
+            status: "awaiting_review",
+          },
+        });
+      } catch {
+        // Best-effort.
+      }
       result.approvalsCreated += 1;
     } catch (e) {
       result.errors.push({ eventId: event.eventId, message: e instanceof Error ? e.message : String(e) });

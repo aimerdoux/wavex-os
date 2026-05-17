@@ -26,6 +26,8 @@ const DELIVERABLES_THROUGHPUT_SLOT = "wavex-deliverables-throughput";
 const AGENT_STATUS_SLOT = "wavex-agent-status";
 // Mission Control Phase 1 — live plain-language activity stream.
 const MC_STREAM_SLOT = "wavex-mission-control-stream";
+// Mission Control Phase 2 — Deliverables ledger with kind-aware inspector.
+const MC_DELIVERABLES_SLOT = "wavex-mission-control-deliverables";
 
 const manifest: PaperclipPluginManifestV1 = {
   id: PLUGIN_ID,
@@ -58,6 +60,14 @@ const manifest: PaperclipPluginManifestV1 = {
         id: MC_STREAM_SLOT,
         displayName: "Mission Control — Activity Stream",
         exportName: "MissionControlStreamWidget",
+      },
+      // Phase 2 — Deliverables ledger; directly below the Stream so the
+      // operator can pivot from "what just happened" to "what was made".
+      {
+        type: "dashboardWidget",
+        id: MC_DELIVERABLES_SLOT,
+        displayName: "Mission Control — Deliverables",
+        exportName: "MissionControlDeliverablesWidget",
       },
       {
         type: "dashboardWidget",

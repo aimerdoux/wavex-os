@@ -433,6 +433,41 @@ const plugin = definePlugin({
     });
 
     // -------------------------------------------------------------------
+    // Mission Control — deliverables list. Backs the Phase 2 table widget.
+    // -------------------------------------------------------------------
+    ctx.data.register("mission-control-deliverables", async ({ companyId, kind, taskRefId, status, limit }) => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      const id = String(companyId ?? "");
+      if (!id) {
+        return { ok: false, deliverables: [], source: "no-company" };
+      }
+      const params = new URLSearchParams();
+      if (typeof kind === "string") params.set("kind", kind);
+      if (typeof taskRefId === "string") params.set("taskRefId", taskRefId);
+      if (typeof status === "string") params.set("status", status);
+      if (typeof limit === "number") params.set("limit", String(limit));
+      const qs = params.toString();
+      try {
+        const r = await ctx.http.fetch(
+          `${base}/api/mission-control/${encodeURIComponent(id)}/deliverables${qs ? `?${qs}` : ""}`,
+        );
+        if (!r.ok) {
+          return { ok: false, deliverables: [], source: "wavex-api-error", status: r.status };
+        }
+        const body = (await r.json()) as { ok?: boolean; deliverables?: unknown[]; error?: string };
+        return {
+          ok: body.ok !== false,
+          deliverables: Array.isArray(body.deliverables) ? body.deliverables : [],
+          error: body.error,
+          source: "wavex-api",
+        };
+      } catch (err) {
+        return { ok: false, deliverables: [], source: "exception", error: String(err) };
+      }
+    });
+
+    // -------------------------------------------------------------------
     // Mission Control — live stream. Polls the activity endpoint with a
     //   `since` cursor and re-publishes new rows onto the `mission-control-
     //   stream` channel. Polling beats subscribing to the wavex SSE

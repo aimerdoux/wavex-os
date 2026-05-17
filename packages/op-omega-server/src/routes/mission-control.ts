@@ -20,6 +20,16 @@ import {
 } from "../mission-control/activity-log.js";
 import { subscribeMissionControlEvents } from "../mission-control/activity-bus.js";
 import { getScopeTreeCached } from "../mission-control/scope-tree-cache.js";
+import {
+  deliverableFolder,
+  getDeliverable,
+  queryDeliverables,
+  type QueryDeliverablesInput,
+} from "../mission-control/deliverables.js";
+import type {
+  DeliverableKind,
+  DeliverableStatus,
+} from "@wavex-os/shared/types/mission-control";
 
 let bootstrapped = false;
 async function ensureBootstrap(): Promise<void> {
@@ -204,4 +214,112 @@ export function registerMissionControlRoutes(app: FastifyInstance): void {
       unsubscribe();
     });
   });
+
+  // ── GET /api/mission-control/:companyId/deliverables ──────────────────
+  app.get(
+    "/api/mission-control/:companyId/deliverables",
+    async (req, reply) => {
+      const ar = authReq(req);
+      try {
+        assertBoard(ar);
+      } catch (e) {
+        if (e instanceof AuthError)
+          return reply.status(e.statusCode).send({ error: e.message });
+        throw e;
+      }
+      const { companyId } = req.params as { companyId: string };
+      assertCompanyAccess(ar, companyId);
+      await ensureBootstrap();
+      const q = req.query as Record<string, unknown>;
+      const input: QueryDeliverablesInput = {
+        companyId,
+        kind: typeof q.kind === "string" ? (q.kind as DeliverableKind) : undefined,
+        taskRefId:
+          typeof q.taskRefId === "string" ? q.taskRefId : undefined,
+        status:
+          typeof q.status === "string"
+            ? (q.status as DeliverableStatus)
+            : undefined,
+        producedByNodeId:
+          typeof q.producedByNodeId === "string"
+            ? q.producedByNodeId
+            : undefined,
+        limit:
+          typeof q.limit === "string"
+            ? Number.parseInt(q.limit, 10)
+            : undefined,
+      };
+      try {
+        const items = await queryDeliverables(input);
+        return { ok: true, deliverables: items };
+      } catch (e) {
+        return reply.status(503).send({
+          ok: false,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
+    },
+  );
+
+  // ── GET /api/mission-control/deliverable/:id ──────────────────────────
+  app.get("/api/mission-control/deliverable/:id", async (req, reply) => {
+    const ar = authReq(req);
+    try {
+      assertBoard(ar);
+    } catch (e) {
+      if (e instanceof AuthError)
+        return reply.status(e.statusCode).send({ error: e.message });
+      throw e;
+    }
+    const { id } = req.params as { id: string };
+    await ensureBootstrap();
+    try {
+      const d = await getDeliverable(id);
+      if (!d) {
+        return reply.status(404).send({ ok: false, error: "not found" });
+      }
+      assertCompanyAccess(ar, d.instanceId);
+      return { ok: true, deliverable: d };
+    } catch (e) {
+      if (e instanceof AuthError)
+        return reply.status(e.statusCode).send({ error: e.message });
+      return reply.status(503).send({
+        ok: false,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  });
+
+  // ── GET /api/mission-control/deliverable/:id/folder ───────────────────
+  //   Returns the on-disk folder containing the artifact so the UI can
+  //   surface a "Reveal in Finder" link. The route itself doesn't open
+  //   the folder (that needs a client-side native bridge); it just
+  //   returns the absolute path.
+  app.get(
+    "/api/mission-control/deliverable/:id/folder",
+    async (req, reply) => {
+      const ar = authReq(req);
+      try {
+        assertBoard(ar);
+      } catch (e) {
+        if (e instanceof AuthError)
+          return reply.status(e.statusCode).send({ error: e.message });
+        throw e;
+      }
+      const { id } = req.params as { id: string };
+      await ensureBootstrap();
+      try {
+        const f = await deliverableFolder(id);
+        if (!f) {
+          return reply.status(404).send({ ok: false, error: "not found" });
+        }
+        return { ok: true, ...f };
+      } catch (e) {
+        return reply.status(503).send({
+          ok: false,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
+    },
+  );
 }

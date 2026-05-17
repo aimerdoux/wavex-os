@@ -21,6 +21,7 @@ import { withTokenAccounting } from "../../lib/token-accounting.js";
 import { readPreferences } from "../memory/preferences.js";
 import type { AvatarApproval } from "./mail-triage.js";
 import { mirrorToMissionControl } from "../../mission-control/mirror.js";
+import { writeDeliverable } from "../../mission-control/deliverables.js";
 
 interface SlackMention {
   channel: string;          // #channel-name
@@ -276,6 +277,39 @@ export async function runSlackDigest(
         importance: cls.importance,
         confidence: cls.confidence,
       });
+      try {
+        await writeDeliverable({
+          companyId: handoff.paperclipCompanyId,
+          instanceId: avatarId,
+          modeContext: "avatar",
+          taskRefType: "avatar_approval",
+          taskRefId: id,
+          producedByNodeId: agentId,
+          kind: "message_draft",
+          title: `Slack mention in ${mention.channel}`,
+          description: `From ${mention.author}: importance=${cls.importance}`,
+          previewText: mention.text.slice(0, 280),
+          mimeType: "text/plain",
+          status: "draft",
+          templateUsed: "avatar.slack.mention_digest",
+          payload: {
+            channel: mention.channel,
+            channelId: mention.channelId,
+            author: mention.author,
+            text: mention.text,
+            permalink: mention.permalink,
+            importance: cls.importance,
+            confidence: cls.confidence,
+          },
+          taskRef: {
+            id,
+            title: `Triage ${mention.channel} mention`,
+            status: "awaiting_review",
+          },
+        });
+      } catch {
+        // Best-effort.
+      }
       result.approvalsCreated += 1;
     } catch (e) {
       result.errors.push({ ts: mention.ts, message: e instanceof Error ? e.message : String(e) });

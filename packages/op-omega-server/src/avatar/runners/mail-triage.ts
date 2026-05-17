@@ -21,6 +21,7 @@ import { route as tierRoute } from "@op-omega/plugin-tier-router";
 import { withTokenAccounting } from "../../lib/token-accounting.js";
 import { readPreferences, type PreferenceRule } from "../memory/preferences.js";
 import { mirrorToMissionControl } from "../../mission-control/mirror.js";
+import { writeDeliverable } from "../../mission-control/deliverables.js";
 import { gmailProvider } from "./mail/gmail-provider.js";
 import { outlookProvider } from "./mail/outlook-provider.js";
 import type { MailClassification, MailProvider, MailThread } from "./mail/types.js";
@@ -306,6 +307,41 @@ async function createApproval(
     classification: classification.classification,
     confidence: classification.confidence,
   });
+  // Mission Control deliverable ledger entry — invariant: every successful
+  // task produces a Deliverable. The runner records what was drafted +
+  // hashes it for content-addressing; folder-reveal works via diskPath.
+  try {
+    await writeDeliverable({
+      companyId: paperclipCompanyId,
+      instanceId: avatarId,
+      modeContext: "avatar",
+      taskRefType: "avatar_approval",
+      taskRefId: id,
+      producedByNodeId: agentId,
+      kind: "email_draft",
+      title: `Reply: ${thread.subject ?? "(no subject)"}`,
+      description: `Draft reply to ${thread.from ?? "unknown sender"}`,
+      previewText: classification.draft?.slice(0, 280) ?? "",
+      mimeType: "text/plain",
+      status: initialStatus === "approved" ? "approved" : "draft",
+      templateUsed: `avatar.${provider.id}.draft_reply`,
+      payload: {
+        threadId: thread.threadId,
+        subject: thread.subject,
+        from: thread.from,
+        draftText: classification.draft,
+        classification: classification.classification,
+        confidence: classification.confidence,
+      },
+      taskRef: {
+        id,
+        title: `Reply to ${thread.from ?? "thread"}`,
+        status: initialStatus === "approved" ? "approved" : "awaiting_review",
+      },
+    });
+  } catch {
+    // Deliverable write is best-effort; approval flow is the source of truth.
+  }
   if (initialStatus === "approved") {
     await logActivity(paperclipUrl, paperclipCompanyId, agentId, "avatar.approval.auto_approved", {
       approvalId: id,
