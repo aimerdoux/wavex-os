@@ -36,6 +36,8 @@ const MC_NODE_PROFILE_SLOT = "wavex-mission-control-node-profile";
 const MC_GRAPH_SLOT = "wavex-mission-control-graph";
 // Mission Control Phase 6 — Chief of Staff config + rules + evaluator.
 const MC_CHIEF_SLOT = "wavex-mission-control-chief";
+// Mission Control Phase 7 — Operations polish (cost / capacity / export).
+const MC_POLISH_SLOT = "wavex-mission-control-polish";
 
 const manifest: PaperclipPluginManifestV1 = {
   id: PLUGIN_ID,
@@ -107,6 +109,13 @@ const manifest: PaperclipPluginManifestV1 = {
         id: MC_CHIEF_SLOT,
         displayName: "Mission Control — Chief of Staff",
         exportName: "MissionControlChiefWidget",
+      },
+      // Phase 7 — Operations polish (cost / capacity / weekly export).
+      {
+        type: "dashboardWidget",
+        id: MC_POLISH_SLOT,
+        displayName: "Mission Control — Operations",
+        exportName: "MissionControlPolishWidget",
       },
       {
         type: "dashboardWidget",

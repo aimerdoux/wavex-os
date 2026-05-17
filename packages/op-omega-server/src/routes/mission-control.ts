@@ -53,6 +53,12 @@ import {
   upsertChiefConfig,
   type UpsertChiefConfigInput,
 } from "../mission-control/chief-of-staff.js";
+import {
+  buildWeeklyExport,
+  exportToCsv,
+  getCapacity,
+  getCostDashboard,
+} from "../mission-control/polish.js";
 import type {
   ChiefOriginationRule,
 } from "@wavex-os/shared/types/mission-control";
@@ -602,6 +608,74 @@ export function registerMissionControlRoutes(app: FastifyInstance): void {
           error: e instanceof Error ? e.message : String(e),
         });
       }
+    },
+  );
+
+  // ── Phase 7 polish: cost / capacity / weekly export ───────────────────
+  app.get("/api/mission-control/:companyId/cost", async (req, reply) => {
+    const ar = authReq(req);
+    try {
+      assertBoard(ar);
+    } catch (e) {
+      if (e instanceof AuthError)
+        return reply.status(e.statusCode).send({ error: e.message });
+      throw e;
+    }
+    const { companyId } = req.params as { companyId: string };
+    assertCompanyAccess(ar, companyId);
+    await ensureBootstrap();
+    const q = req.query as Record<string, unknown>;
+    const cost = await getCostDashboard(companyId, {
+      since: parseDate(q.since),
+      until: parseDate(q.until),
+    });
+    return { ok: true, ...cost };
+  });
+
+  app.get("/api/mission-control/:companyId/capacity", async (req, reply) => {
+    const ar = authReq(req);
+    try {
+      assertBoard(ar);
+    } catch (e) {
+      if (e instanceof AuthError)
+        return reply.status(e.statusCode).send({ error: e.message });
+      throw e;
+    }
+    const { companyId } = req.params as { companyId: string };
+    assertCompanyAccess(ar, companyId);
+    await ensureBootstrap();
+    const q = req.query as Record<string, unknown>;
+    const capacity = await getCapacity(companyId, {
+      since: parseDate(q.since),
+      until: parseDate(q.until),
+    });
+    return { ok: true, ...capacity };
+  });
+
+  app.get(
+    "/api/mission-control/:companyId/weekly-export",
+    async (req, reply) => {
+      const ar = authReq(req);
+      try {
+        assertBoard(ar);
+      } catch (e) {
+        if (e instanceof AuthError)
+          return reply.status(e.statusCode).send({ error: e.message });
+        throw e;
+      }
+      const { companyId } = req.params as { companyId: string };
+      assertCompanyAccess(ar, companyId);
+      await ensureBootstrap();
+      const q = req.query as Record<string, unknown>;
+      const weekly = await buildWeeklyExport(companyId, {
+        since: parseDate(q.since),
+        until: parseDate(q.until),
+      });
+      if (q.format === "csv") {
+        reply.header("Content-Type", "text/csv");
+        return exportToCsv(weekly);
+      }
+      return { ok: true, ...weekly };
     },
   );
 

@@ -26,6 +26,8 @@ export { MissionControlNodeProfileWidget } from "./MissionControlNodeProfileWidg
 export { MissionControlGraphWidget } from "./MissionControlGraphWidget.js";
 // Mission Control — Phase 6 Chief of Staff config + rules + evaluator.
 export { MissionControlChiefWidget } from "./MissionControlChiefWidget.js";
+// Mission Control — Phase 7 polish (cost / capacity / weekly export).
+export { MissionControlPolishWidget } from "./MissionControlPolishWidget.js";
 
 const WAVEX_COLOR = "#00d4ff";
 const WAVEX_BG = "color-mix(in srgb, #00d4ff 6%, transparent)";

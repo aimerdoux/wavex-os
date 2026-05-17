@@ -433,6 +433,74 @@ const plugin = definePlugin({
     });
 
     // -------------------------------------------------------------------
+    // Mission Control — Phase 7 polish (cost/capacity/weekly).
+    // -------------------------------------------------------------------
+    ctx.data.register("mission-control-cost", async ({ companyId }) => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      const id = String(companyId ?? "");
+      if (!id) return { ok: false, totals: { costUSD: 0, events: 0 }, byNode: [] };
+      try {
+        const r = await ctx.http.fetch(
+          `${base}/api/mission-control/${encodeURIComponent(id)}/cost`,
+        );
+        if (!r.ok) return { ok: false, byNode: [], status: r.status };
+        return await r.json();
+      } catch (err) {
+        return { ok: false, byNode: [], error: String(err) };
+      }
+    });
+
+    ctx.data.register("mission-control-capacity", async ({ companyId }) => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      const id = String(companyId ?? "");
+      if (!id) return { ok: false, rows: [], avg: 0, max: 0 };
+      try {
+        const r = await ctx.http.fetch(
+          `${base}/api/mission-control/${encodeURIComponent(id)}/capacity`,
+        );
+        if (!r.ok) return { ok: false, rows: [], status: r.status };
+        return await r.json();
+      } catch (err) {
+        return { ok: false, rows: [], error: String(err) };
+      }
+    });
+
+    ctx.data.register("mission-control-weekly-export", async ({ companyId }) => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      const id = String(companyId ?? "");
+      if (!id) return { ok: false };
+      try {
+        const r = await ctx.http.fetch(
+          `${base}/api/mission-control/${encodeURIComponent(id)}/weekly-export`,
+        );
+        if (!r.ok) return { ok: false, status: r.status };
+        return await r.json();
+      } catch (err) {
+        return { ok: false, error: String(err) };
+      }
+    });
+
+    ctx.actions.register("mission-control-weekly-export-csv", async ({ companyId }) => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      const id = String(companyId ?? "");
+      if (!id) return { ok: false, csv: "" };
+      try {
+        const r = await ctx.http.fetch(
+          `${base}/api/mission-control/${encodeURIComponent(id)}/weekly-export?format=csv`,
+        );
+        if (!r.ok) return { ok: false, csv: "", status: r.status };
+        const csv = await r.text();
+        return { ok: true, csv };
+      } catch (err) {
+        return { ok: false, csv: "", error: String(err) };
+      }
+    });
+
+    // -------------------------------------------------------------------
     // Mission Control — Phase 6 Chief of Staff.
     // -------------------------------------------------------------------
     ctx.data.register("mission-control-chief", async ({ companyId }) => {
