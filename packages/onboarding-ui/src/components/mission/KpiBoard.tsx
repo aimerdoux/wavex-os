@@ -61,7 +61,7 @@ export function KpiBoard() {
         <p className="text-dim" style={{ margin: "0 0 12px" }}>
           No company selected. Select a company above to populate this scoreboard.
         </p>
-        <Link to="/onboarding-chat"><button type="button">Complete onboarding →</button></Link>
+        <Link to="/onboarding-chat" style={{ display: "inline-block", padding: "12px 20px", background: "var(--accent)", color: "#08221d", borderRadius: "var(--radius)", fontWeight: 600, fontSize: 14, textDecoration: "none" }}>Complete onboarding →</Link>
       </div>
     );
   }

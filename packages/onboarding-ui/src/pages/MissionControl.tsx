@@ -147,9 +147,7 @@ export default function MissionControl() {
               <strong>No company selected.</strong>{" "}
               <span className="text-dim">Pick one from the dropdown or start onboarding for a new one.</span>
             </div>
-            <Link to="/onboarding-chat">
-              <button>Start onboarding →</button>
-            </Link>
+            <Link to="/onboarding-chat" style={{ display: "inline-block", padding: "12px 20px", background: "var(--accent)", color: "#08221d", borderRadius: "var(--radius)", fontWeight: 600, fontSize: 14, textDecoration: "none" }}>Start onboarding →</Link>
           </div>
         )}
 
