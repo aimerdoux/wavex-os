@@ -103,7 +103,7 @@ export function PrivacyPanel({ session }: PrivacyPanelProps): JSX.Element {
       <div style={card}>
         <h3 style={heading}>Privacy</h3>
         <p style={text}>You are not signed in. WaveX OS runs entirely on your machine — no fleet data is sent to WaveX.</p>
-        <a href="/pricing" style={{ display: "inline-block", marginTop: 12, padding: "12px 20px", background: "var(--accent)", color: "#08221d", borderRadius: "var(--radius)", fontWeight: 600, fontSize: 13, textDecoration: "none" }}>Sign in on pricing page →</a>
+        <a href="/pricing" style={{ display: "inline-block", marginTop: 12, padding: "13px 20px", background: "var(--accent)", color: "#08221d", borderRadius: "var(--radius)", fontWeight: 600, fontSize: 13, textDecoration: "none" }}>Sign in on pricing page →</a>
       </div>
     );
   }
@@ -125,7 +125,7 @@ export function PrivacyPanel({ session }: PrivacyPanelProps): JSX.Element {
         <p style={text}>
           You have no active WaveX Expert Agents. Your fleet data stays entirely on this machine.
         </p>
-        <a href="/pricing" style={{ display: "inline-block", marginTop: 12, padding: "12px 20px", background: "var(--accent)", color: "#08221d", borderRadius: "var(--radius)", fontWeight: 600, fontSize: 13, textDecoration: "none" }}>Hire an Expert Agent →</a>
+        <a href="/pricing" style={{ display: "inline-block", marginTop: 12, padding: "13px 20px", background: "var(--accent)", color: "#08221d", borderRadius: "var(--radius)", fontWeight: 600, fontSize: 13, textDecoration: "none" }}>Hire an Expert Agent →</a>
       </div>
     );
   }
