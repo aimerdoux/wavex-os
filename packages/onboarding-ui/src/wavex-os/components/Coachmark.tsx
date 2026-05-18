@@ -209,7 +209,7 @@ export function CoachmarkOverlay({ steps, onDone }: Props) {
             onClick={onDone}
             style={{
               background: "transparent", border: "none", color: "var(--text-dim)",
-              fontSize: 11, cursor: "pointer", padding: 0, minHeight: 44,
+              fontSize: 11, cursor: "pointer", padding: "14px 8px", minHeight: 44,
             }}
           >
             Skip tour

@@ -58,9 +58,10 @@ export function KpiBoard() {
     return (
       <div className="card">
         <h3 style={{ marginTop: 0 }}>KPI scoreboard</h3>
-        <p className="text-dim" style={{ margin: 0 }}>
-          No company selected. <Link to="/onboarding-chat" style={{ display: 'inline-flex', alignItems: 'center', minHeight: 44 }}>Complete onboarding</Link> to populate this scoreboard.
+        <p className="text-dim" style={{ margin: "0 0 12px" }}>
+          No company selected. Select a company above to populate this scoreboard.
         </p>
+        <Link to="/onboarding-chat"><button type="button">Complete onboarding →</button></Link>
       </div>
     );
   }

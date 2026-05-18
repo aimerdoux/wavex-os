@@ -218,7 +218,7 @@ export function InceptionCTA() {
               target="_blank"
               rel="noopener noreferrer"
               style={{
-                padding: "0.55rem 0.9rem",
+                padding: "0.75rem 0.9rem",
                 borderRadius: 6,
                 background: "var(--accent)",
                 color: "var(--bg)",
@@ -226,6 +226,8 @@ export function InceptionCTA() {
                 fontSize: 12,
                 textDecoration: "none",
                 textAlign: "center",
+                display: "block",
+                minHeight: 44,
               }}
             >
               Open Paperclip Dashboard ↗
@@ -240,7 +242,7 @@ export function InceptionCTA() {
               type="button"
               disabled
               style={{
-                padding: "0.55rem 0.9rem",
+                padding: "0.75rem 0.9rem",
                 borderRadius: 6,
                 background: "color-mix(in srgb, var(--accent) 35%, var(--surface))",
                 color: "var(--bg)",
@@ -273,7 +275,7 @@ export function InceptionCTA() {
                 }
               }}
               style={{
-                padding: "0.55rem 0.9rem",
+                padding: "0.75rem 0.9rem",
                 borderRadius: 6,
                 background: "var(--accent)",
                 color: "var(--bg)",
@@ -292,7 +294,7 @@ export function InceptionCTA() {
             onClick={() => void forceFirstCycle()}
             disabled={forceBusy}
             style={{
-              padding: "0.4rem 0.9rem",
+              padding: "0.75rem 0.9rem",
               borderRadius: 6,
               background: "transparent",
               border: "1px solid var(--border)",

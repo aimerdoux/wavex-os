@@ -103,9 +103,7 @@ export function PrivacyPanel({ session }: PrivacyPanelProps): JSX.Element {
       <div style={card}>
         <h3 style={heading}>Privacy</h3>
         <p style={text}>You are not signed in. WaveX OS runs entirely on your machine — no fleet data is sent to WaveX.</p>
-        <p style={{ ...text, marginTop: 8 }}>
-          Sign in on the <a href="/pricing" style={link}>pricing page</a> to hire WaveX Expert Agents.
-        </p>
+        <a href="/pricing" style={{ display: "block", marginTop: 12 }}><button type="button" style={{ fontSize: 13 }}>Sign in on pricing page →</button></a>
       </div>
     );
   }
@@ -127,9 +125,7 @@ export function PrivacyPanel({ session }: PrivacyPanelProps): JSX.Element {
         <p style={text}>
           You have no active WaveX Expert Agents. Your fleet data stays entirely on this machine.
         </p>
-        <p style={{ ...text, marginTop: 8 }}>
-          Hire an Expert Agent on the <a href="/pricing" style={link}>pricing page</a> to grant scoped access.
-        </p>
+        <a href="/pricing" style={{ display: "block", marginTop: 12 }}><button type="button" style={{ fontSize: 13 }}>Hire an Expert Agent →</button></a>
       </div>
     );
   }
@@ -211,7 +207,7 @@ const card: React.CSSProperties = {
 };
 const heading: React.CSSProperties = { margin: 0, marginBottom: 8, fontSize: 15, color: "#e6e6e6" };
 const text: React.CSSProperties = { color: "#8a8a92", fontSize: 13, margin: 0, lineHeight: 1.5 };
-const link: React.CSSProperties = { color: "#4ec9b0", textDecoration: "underline", display: "inline-flex", alignItems: "center", minHeight: 44 };
+const link: React.CSSProperties = { color: "#4ec9b0", textDecoration: "underline", display: "inline-block", padding: "14px 4px" };
 const hireCard: React.CSSProperties = {
   background: "#0a0a0a",
   border: "1px solid #1f1f23",
