@@ -211,7 +211,7 @@ const card: React.CSSProperties = {
 };
 const heading: React.CSSProperties = { margin: 0, marginBottom: 8, fontSize: 15, color: "#e6e6e6" };
 const text: React.CSSProperties = { color: "#8a8a92", fontSize: 13, margin: 0, lineHeight: 1.5 };
-const link: React.CSSProperties = { color: "#4ec9b0", textDecoration: "underline" };
+const link: React.CSSProperties = { color: "#4ec9b0", textDecoration: "underline", display: "inline-flex", alignItems: "center", minHeight: 44 };
 const hireCard: React.CSSProperties = {
   background: "#0a0a0a",
   border: "1px solid #1f1f23",

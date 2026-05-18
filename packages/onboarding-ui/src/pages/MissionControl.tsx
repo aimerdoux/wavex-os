@@ -198,7 +198,7 @@ export default function MissionControl() {
             </div>
 
             <p className="text-dim" style={{ fontSize: 11, marginTop: "2rem", textAlign: "center" }}>
-              WaveX OS · MIT · <a href="https://github.com/aimerdoux/wavex-os" target="_blank" rel="noreferrer">github.com/aimerdoux/wavex-os</a>
+              WaveX OS · MIT · <a href="https://github.com/aimerdoux/wavex-os" target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", minHeight: 44 }}>github.com/aimerdoux/wavex-os</a>
             </p>
           </div>
 
