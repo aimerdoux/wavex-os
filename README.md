@@ -13,6 +13,8 @@ WaveX OS is a localhost-first wizard that materializes an AI agent company in ab
 
 Your data and inference stay on your machine. Spawned agents use your Claude Max OAuth via a wrapper that reads the system keychain — no API keys, no remote inference, no telemetry.
 
+![WaveX OS — wizard walkthrough](docs/images/demo.gif)
+
 After the wizard you're on a **Mission Control** dashboard with a live fleet graph + KPI scoreboard. An optional **System Optimizer** subscription (Phase F) can inject board-level reasoning on a daily cadence using your same OAuth — code is free, hosted optimizer is a tier on top.
 
 ---
