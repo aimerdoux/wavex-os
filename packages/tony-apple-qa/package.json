@@ -12,7 +12,8 @@
     "README.md"
   ],
   "scripts": {
-    "start": "node bin/tony-apple-qa.js"
+    "start": "node bin/tony-apple-qa.js",
+    "test": "node --test test/*.test.js"
   },
   "engines": {
     "node": ">=18.0.0"
