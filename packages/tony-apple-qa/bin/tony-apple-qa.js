@@ -10,6 +10,7 @@
  *   tony-apple-qa login
  *   tony-apple-qa logout
  *   tony-apple-qa reset
+ *   tony-apple-qa --version
  *   tony-apple-qa --help
  */
 import { exec, spawn } from 'node:child_process';
@@ -38,6 +39,7 @@ const HOME_DIR = join(homedir(), '.wavex-os');
 const STATE_FILE = join(HOME_DIR, 'tony-apple-qa.json');
 const ONBOARDING_PORT = 5173;
 const MOCK_CORE_PORT = 3101;
+const VERSION = '0.1.0';
 
 const BANNER = `
 ${c.accent}  _____                _____           _       ___  ___
@@ -364,6 +366,7 @@ function help() {
   ${c.cyan}tony-apple-qa login${c.reset}                 Pair with the cloud console
   ${c.cyan}tony-apple-qa logout${c.reset}                Remove the local device token
   ${c.cyan}tony-apple-qa reset${c.reset}                 Remove ${c.dim}~/.wavex-os${c.reset} (destructive)
+  ${c.cyan}tony-apple-qa --version${c.reset}             Print the CLI version
   ${c.cyan}tony-apple-qa --help${c.reset}                Show this message
 
 ${c.bold}Docs:${c.reset} https://github.com/aimerdoux/wavex-os
@@ -376,6 +379,11 @@ async function main() {
 
   if (!cmd || cmd === '--help' || cmd === '-h' || cmd === 'help') {
     help();
+    return;
+  }
+
+  if (cmd === '--version' || cmd === '-v' || cmd === 'version') {
+    console.log(VERSION);
     return;
   }
 
