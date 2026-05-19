@@ -46,11 +46,25 @@ Examples: `feat/pillar-6-form`, `fix/port-collision`, `docs/contributing-guide`
 | Path | What it is |
 |---|---|
 | `apps/installer/` | `npx wavex-os init` CLI |
-| `packages/onboarding-ui/` | Vite + React wizard + Mission Control |
+| `packages/agent-templates/` | Curated role templates plus `_registry.json` |
+| `packages/auth-shim/` | Auth boundary gates (`assertBoard`, `assertCompanyAccess`) via `WAVEX_AUTH_MODE` |
+| `packages/claude-code-proxy/` | Local Anthropic-compatible proxy bridged through Supabase Realtime |
+| `packages/cloud-client/` | Cloud API + Realtime client for device link/token + inference routing |
+| `packages/composio-shim/` | Composio onboarding surface (`listConnections`, toolkits, key validation) |
+| `packages/core/` | Paperclip vendored via git subtree (don't modify directly - see below) |
+| `packages/db/` | Drizzle schema + PGlite/Postgres adapters + migrations |
+| `packages/healing/` | Self-healing loops (401 fallback, refresh lock, worker restart) |
+| `packages/inference-adapter/` | Tier-router inference mode switch (`oauth`/`apikey`) |
+| `packages/inference-server/` | Mac-hosted Fastify inference proxy for Pool A/C |
 | `packages/mock-core/` | In-memory Paperclip stand-in (Fastify on :3101) |
-| `packages/agent-templates/` | 30 curated agent templates |
-| `packages/core/` | Paperclip vendored via git subtree (don't modify directly — see below) |
-| `packages/onboarding-server-client/` | Typed stub for future hosted backend |
+| `packages/observability/` | Fleet observability reference package (bottlenecks, attribution, token budget) |
+| `packages/onboarding-server-client/` | Typed client for future hosted onboarding backend |
+| `packages/onboarding-ui/` | Browser onboarding wizard + Mission Control UI |
+| `packages/paperclip-plugin-wavex/` | WaveX plugin layer for Paperclip dashboard/workflow |
+| `packages/plugin-sdk-shim/` | Re-export shim for `@paperclipai/plugin-sdk` |
+| `packages/standard-skills/` | Shared cross-cutting skill packs loaded by agents |
+| `packages/tony-apple-qa/` | CLI package for QA-fleet setup flow |
+| `packages/wavex-os-server/` | Fastify route adapter for vendored onboarding plugin |
 | `scripts/wrappers/claude-anthropic-direct.sh` | Claude Max OAuth wrapper |
 | `scripts/ingest-agency-agents.mjs` | Re-runnable upstream → curated template ingester |
 | `docs/` | Architecture, OAuth handoff design, roadmap |
@@ -61,8 +75,8 @@ Examples: `feat/pillar-6-form`, `fix/port-collision`, `docs/contributing-guide`
 
 | You want to… | Look at |
 |---|---|
-| Improve a wizard step | `packages/onboarding-ui/src/pages/onboarding/<step>.tsx` |
-| Improve Mission Control | `packages/onboarding-ui/src/components/mission/` and `pages/MissionControl.tsx` |
+| Improve a wizard step | `packages/onboarding-ui/src/wavex-os/{pillars,phases,pages}/` |
+| Improve Mission Control | `packages/onboarding-ui/src/components/mission/` and `packages/onboarding-ui/src/pages/MissionControl.tsx` |
 | Add or refine a template | `packages/agent-templates/<id>/SKILL.md` and `_registry.json` |
 | Improve the mock backend | `packages/mock-core/src/server.ts` |
 | Touch the OAuth wrapper | `scripts/wrappers/claude-anthropic-direct.sh` |
