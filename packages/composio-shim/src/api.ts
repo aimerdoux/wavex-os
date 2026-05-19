@@ -22,18 +22,83 @@ import { getComposioApiKey, getComposioMode } from "./mode.js";
 
 // Lazily import @composio/core so disabled mode never loads it.
 let cachedClient: import("@composio/core").Composio | null = null;
+let cachedClientKey: string | null = null;
 async function getClient(): Promise<import("@composio/core").Composio | null> {
   if (getComposioMode() === "disabled") return null;
   const key = getComposioApiKey();
   if (!key) return null;
-  if (cachedClient) return cachedClient;
+  // Invalidate the cached client if the env key changed (e.g., the
+  // operator just plugged a new key via the setup UI). Without this
+  // check we'd keep using the old client until restart.
+  if (cachedClient && cachedClientKey === key) return cachedClient;
   const { Composio } = await import("@composio/core");
   cachedClient = new Composio({ apiKey: key });
+  cachedClientKey = key;
   return cachedClient;
+}
+
+/** Drop the cached client so the next getClient() call re-reads
+ *  process.env and rebuilds. Called by the setup endpoint after it
+ *  writes a new key to .env + mutates process.env in-memory. */
+export function _resetClient(): void {
+  cachedClient = null;
+  cachedClientKey = null;
 }
 
 export function getFeaturedToolkits(): FeaturedToolkit[] {
   return [...FEATURED_TOOLKITS];
+}
+
+/** Full Composio catalog (live mode only). Returns hundreds of toolkits
+ *  with logos, descriptions, categories. Used by the Mission Control
+ *  Connectors directory to populate the browsable grid. In disabled
+ *  mode returns null so callers can fall back to FEATURED_TOOLKITS. */
+export interface CatalogToolkit {
+  slug: string;
+  name: string;
+  logo?: string;
+  description?: string;
+  category?: string;
+  toolsCount?: number;
+  authSchemes?: string[];
+  noAuth?: boolean;
+}
+export async function listAllToolkits(): Promise<CatalogToolkit[] | null> {
+  const client = await getClient();
+  if (!client) return null;
+  try {
+    const tk = client.toolkits as unknown as {
+      get: (q: Record<string, unknown>) => Promise<
+        Array<{
+          slug: string;
+          name: string;
+          meta?: {
+            logo?: string;
+            description?: string;
+            categories?: Array<{ slug: string; name: string }>;
+            toolsCount?: number;
+          };
+          isLocalToolkit?: boolean;
+          authSchemes?: string[];
+          noAuth?: boolean;
+        }>
+      >;
+    };
+    const rows = await tk.get({});
+    return rows.map((r) => ({
+      slug: r.slug,
+      name: r.name,
+      logo: r.meta?.logo,
+      description: r.meta?.description,
+      category: r.meta?.categories?.[0]?.slug,
+      toolsCount: r.meta?.toolsCount,
+      authSchemes: r.authSchemes,
+      noAuth: r.noAuth,
+    }));
+  } catch (err) {
+    console.warn("[composio-shim] listAllToolkits failed:", (err as Error).message);
+    return null;
+  }
 }
 
 export async function listConnections(companyId: string): Promise<LiveConnectorRow[]> {

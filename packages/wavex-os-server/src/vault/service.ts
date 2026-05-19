@@ -144,6 +144,46 @@ export async function skipConnector(params: {
   });
 }
 
+/** Hard-delete every credential row for one connector + audit it. Used
+ *  by the Mission Control connectors directory's disconnect action. The
+ *  audit row stays even after the credentials are gone so listConnector-
+ *  States can still surface the historical skip/disconnect signal. */
+export async function deleteAllForConnector(params: {
+  companyId: string;
+  connectorId: string;
+  actorAgentId?: string | null;
+}): Promise<{ removed: number }> {
+  await ensureMigrated();
+  const db = await getDb();
+  const existing = await db
+    .select()
+    .from(credentials)
+    .where(
+      and(
+        eq(credentials.companyId, params.companyId),
+        eq(credentials.connectorId, params.connectorId),
+      ),
+    );
+  if (existing.length === 0) return { removed: 0 };
+  await db
+    .delete(credentials)
+    .where(
+      and(
+        eq(credentials.companyId, params.companyId),
+        eq(credentials.connectorId, params.connectorId),
+      ),
+    );
+  await db.insert(credentialAuditLog).values({
+    id: `cal_${randomUUID().replace(/-/g, "").slice(0, 24)}`,
+    companyId: params.companyId,
+    connectorId: params.connectorId,
+    action: "delete",
+    actorAgentId: params.actorAgentId ?? null,
+    metadata: { removedKeys: existing.map((r) => r.key) },
+  });
+  return { removed: existing.length };
+}
+
 export async function listConnectorStates(companyId: string): Promise<Map<string, ConnectorCredentialState>> {
   await ensureMigrated();
   const db = await getDb();

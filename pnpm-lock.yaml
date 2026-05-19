@@ -253,15 +253,15 @@ importers:
 
   packages/onboarding-ui:
     dependencies:
-      '@wavex-os/plugin-onboarding':
-        specifier: workspace:*
-        version: link:../../vendor/wavex-os/onboarding
       '@supabase/supabase-js':
         specifier: ^2.46.1
         version: 2.105.4
       '@tanstack/react-query':
         specifier: ^5.59.0
         version: 5.100.9(react@18.3.1)
+      '@wavex-os/plugin-onboarding':
+        specifier: workspace:*
+        version: link:../../vendor/wavex-os/onboarding
       react:
         specifier: ^18.3.1
         version: 18.3.1
@@ -297,17 +297,73 @@ importers:
         specifier: ^5.4.6
         version: 5.4.21(@types/node@20.19.39)
 
+  packages/paperclip-plugin-wavex:
+    dependencies:
+      '@wavex-os/plugin-sdk-shim':
+        specifier: workspace:*
+        version: link:../plugin-sdk-shim
+      '@wavex-os/shared':
+        specifier: workspace:*
+        version: link:../shared
+    devDependencies:
+      '@paperclipai/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../vendor/wavex-os/plugin-sdk
+      '@types/node':
+        specifier: ^20.16.5
+        version: 20.19.39
+      '@types/react':
+        specifier: ^19.0.8
+        version: 19.2.14
+      '@types/react-dom':
+        specifier: ^19.0.3
+        version: 19.2.3(@types/react@19.2.14)
+      react:
+        specifier: ^19.0.0
+        version: 19.2.6
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.6(react@19.2.6)
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.39)
+
+  packages/plugin-sdk-shim:
+    dependencies:
+      '@paperclipai/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../vendor/wavex-os/plugin-sdk
+    devDependencies:
+      '@types/node':
+        specifier: ^20.16.5
+        version: 20.19.39
+      typescript:
+        specifier: ^5.5.4
+        version: 5.9.3
+
+  packages/shared:
+    dependencies:
+      zod:
+        specifier: ^3.23.8
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^20.16.5
+        version: 20.19.39
+      typescript:
+        specifier: ^5.5.4
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.39)
+
+  packages/tony-apple-qa: {}
+
   packages/wavex-os-server:
     dependencies:
-      '@wavex-os/plugin-flywheel-kernel':
-        specifier: workspace:*
-        version: link:../../vendor/wavex-os/flywheel-kernel
-      '@wavex-os/plugin-onboarding':
-        specifier: workspace:*
-        version: link:../../vendor/wavex-os/onboarding
-      '@wavex-os/plugin-tier-router':
-        specifier: workspace:*
-        version: link:../../vendor/wavex-os/tier-router
       '@wavex-os/auth-shim':
         specifier: workspace:*
         version: link:../auth-shim
@@ -329,6 +385,18 @@ importers:
       '@wavex-os/observability':
         specifier: workspace:*
         version: link:../observability
+      '@wavex-os/plugin-flywheel-kernel':
+        specifier: workspace:*
+        version: link:../../vendor/wavex-os/flywheel-kernel
+      '@wavex-os/plugin-onboarding':
+        specifier: workspace:*
+        version: link:../../vendor/wavex-os/onboarding
+      '@wavex-os/plugin-tier-router':
+        specifier: workspace:*
+        version: link:../../vendor/wavex-os/tier-router
+      '@wavex-os/shared':
+        specifier: workspace:*
+        version: link:../shared
       drizzle-orm:
         specifier: ^0.36.4
         version: 0.36.4(@electric-sql/pglite@0.2.17)(@types/react@19.2.14)(postgres@3.4.9)(react@19.2.6)
@@ -355,47 +423,6 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@20.19.39)
 
-  packages/paperclip-plugin-wavex:
-    dependencies:
-      '@wavex-os/plugin-sdk-shim':
-        specifier: workspace:*
-        version: link:../plugin-sdk-shim
-    devDependencies:
-      '@paperclipai/plugin-sdk':
-        specifier: workspace:*
-        version: link:../../vendor/wavex-os/plugin-sdk
-      '@types/node':
-        specifier: ^20.16.5
-        version: 20.19.39
-      '@types/react':
-        specifier: ^19.0.8
-        version: 19.2.14
-      '@types/react-dom':
-        specifier: ^19.0.3
-        version: 19.2.3(@types/react@19.2.14)
-      react:
-        specifier: ^19.0.0
-        version: 19.2.6
-      react-dom:
-        specifier: ^19.0.0
-        version: 19.2.6(react@19.2.6)
-      typescript:
-        specifier: ^5.7.3
-        version: 5.9.3
-
-  packages/plugin-sdk-shim:
-    dependencies:
-      '@paperclipai/plugin-sdk':
-        specifier: workspace:*
-        version: link:../../vendor/wavex-os/plugin-sdk
-    devDependencies:
-      '@types/node':
-        specifier: ^20.16.5
-        version: 20.19.39
-      typescript:
-        specifier: ^5.5.4
-        version: 5.9.3
-
   vendor/wavex-os/flywheel-kernel:
     dependencies:
       '@paperclipai/plugin-sdk':
@@ -414,15 +441,15 @@ importers:
 
   vendor/wavex-os/onboarding:
     dependencies:
+      '@paperclipai/plugin-sdk':
+        specifier: workspace:*
+        version: link:../plugin-sdk
       '@wavex-os/plugin-flywheel-kernel':
         specifier: workspace:*
         version: link:../flywheel-kernel
       '@wavex-os/plugin-tier-router':
         specifier: workspace:*
         version: link:../tier-router
-      '@paperclipai/plugin-sdk':
-        specifier: workspace:*
-        version: link:../plugin-sdk
       js-yaml:
         specifier: ^4.1.0
         version: 4.1.1
@@ -433,34 +460,6 @@ importers:
       '@types/node':
         specifier: ^24.6.0
         version: 24.12.3
-      typescript:
-        specifier: ^5.7.3
-        version: 5.9.3
-      vitest:
-        specifier: ^2.1.8
-        version: 2.1.9(@types/node@24.12.3)
-
-  vendor/wavex-os/wavex-os-flow-types:
-    dependencies:
-      '@paperclipai/plugin-sdk':
-        specifier: workspace:*
-        version: link:../plugin-sdk
-    devDependencies:
-      '@types/node':
-        specifier: ^24.6.0
-        version: 24.12.3
-      '@types/react':
-        specifier: ^19.0.8
-        version: 19.2.14
-      '@types/react-dom':
-        specifier: ^19.0.3
-        version: 19.2.3(@types/react@19.2.14)
-      react:
-        specifier: ^19.0.0
-        version: 19.2.6
-      react-dom:
-        specifier: ^19.0.0
-        version: 19.2.6(react@19.2.6)
       typescript:
         specifier: ^5.7.3
         version: 5.9.3
@@ -512,6 +511,34 @@ importers:
       '@types/node':
         specifier: ^24.6.0
         version: 24.12.3
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@24.12.3)
+
+  vendor/wavex-os/wavex-os-flow-types:
+    dependencies:
+      '@paperclipai/plugin-sdk':
+        specifier: workspace:*
+        version: link:../plugin-sdk
+    devDependencies:
+      '@types/node':
+        specifier: ^24.6.0
+        version: 24.12.3
+      '@types/react':
+        specifier: ^19.0.8
+        version: 19.2.14
+      '@types/react-dom':
+        specifier: ^19.0.3
+        version: 19.2.3(@types/react@19.2.14)
+      react:
+        specifier: ^19.0.0
+        version: 19.2.6
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.6(react@19.2.6)
       typescript:
         specifier: ^5.7.3
         version: 5.9.3
