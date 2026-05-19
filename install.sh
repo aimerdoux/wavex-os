@@ -5,17 +5,20 @@
 #   curl -fsSL https://raw.githubusercontent.com/aimerdoux/wavex-os/main/install.sh | bash
 #
 # What it does:
-#   1. Checks Node 20+, pnpm 8+, git. Installs anything missing via Homebrew
-#      (macOS) or apt (Debian/Ubuntu). On other distros, prints the missing
+#   1. Checks Node 20+, pnpm 8+, git, and the `claude` CLI
+#      (@anthropic-ai/claude-code — required for BYOC inference).
+#      Installs anything missing via Homebrew (macOS) or apt
+#      (Debian/Ubuntu) + npm. On other distros, prints the missing
 #      command and exits 1.
 #   2. Clones the repo into $HOME/wavex-os (or $WAVEX_OS_DIR).
 #   3. Runs `pnpm install`.
 #   4. Starts `pnpm dev` and opens http://localhost:5173 in the default browser.
 #
 # Env overrides:
-#   WAVEX_OS_DIR        — where to clone (default: $HOME/wavex-os)
-#   ANTHROPIC_API_KEY   — Pool A inference key (optional; falls back to T1 stubs)
-#   WAVEX_INFERENCE_MODE — "apikey" if ANTHROPIC_API_KEY is set, else unset
+#   WAVEX_OS_DIR             — where to clone (default: $HOME/wavex-os)
+#   ANTHROPIC_API_KEY        — Pool A inference key (optional; falls back to T1 stubs)
+#   WAVEX_INFERENCE_MODE     — "apikey" if ANTHROPIC_API_KEY is set, else unset
+#   WAVEX_SKIP_CLAUDE_CLI=1  — bypass the `claude` CLI install (you manage it elsewhere)
 set -euo pipefail
 
 WAVEX_OS_DIR="${WAVEX_OS_DIR:-$HOME/wavex-os}"
@@ -48,6 +51,13 @@ else
   die "Unsupported OS: $OS. Try the manual install at https://github.com/aimerdoux/wavex-os"
 fi
 
+# Claude CLI install is global via npm (works on macOS + Linux uniformly).
+# We avoid forcing a specific shell-based installer because wavex-os runs in
+# BYOC mode — every customer needs a working `claude` binary for the local
+# tier-router to drive inference. Without it, the dev server boots but T2
+# inference paths halt; nothing else in the stack can fall back for us.
+INSTALL_CLAUDE_CLI="npm install -g @anthropic-ai/claude-code"
+
 bold "[1/4] Checking prereqs"
 need_install=()
 command -v git  >/dev/null 2>&1 && ok "git installed"  || need_install+=("git")
@@ -57,6 +67,17 @@ command -v node >/dev/null 2>&1 && {
   else warn "node $(node --version) is too old; need v20+"; need_install+=("node"); fi
 } || need_install+=("node")
 command -v pnpm >/dev/null 2>&1 && ok "pnpm $(pnpm --version)" || need_install+=("pnpm")
+# Claude CLI (@anthropic-ai/claude-code). BYOC requires it — the tier-router's
+# T2 calls spawn this binary. Treat it as a hard prereq, but allow the user
+# to skip auto-install via WAVEX_SKIP_CLAUDE_CLI=1 if they have it managed
+# by a system package or version manager.
+command -v claude >/dev/null 2>&1 && ok "claude $(claude --version 2>/dev/null | head -1 || echo 'installed')" || {
+  if [ "${WAVEX_SKIP_CLAUDE_CLI:-0}" = "1" ]; then
+    warn "claude CLI not found, WAVEX_SKIP_CLAUDE_CLI=1 — skipping (BYOC won't work until you install it)"
+  else
+    need_install+=("claude")
+  fi
+}
 
 if [ "${#need_install[@]}" -gt 0 ]; then
   bold "[2/4] Installing missing tools: ${need_install[*]}"
@@ -66,9 +87,11 @@ if [ "${#need_install[@]}" -gt 0 ]; then
   fi
   for tool in "${need_install[@]}"; do
     case "$tool" in
-      git)  eval "$INSTALL_GIT"  ;;
-      node) eval "$INSTALL_NODE" ;;
-      pnpm) eval "$INSTALL_PNPM" ;;
+      git)    eval "$INSTALL_GIT"  ;;
+      node)   eval "$INSTALL_NODE" ;;
+      pnpm)   eval "$INSTALL_PNPM" ;;
+      claude) eval "$INSTALL_CLAUDE_CLI" \
+                && note "After install: run 'claude login' once to authorize your Claude Max account." ;;
     esac
   done
   ok "tools installed"
@@ -159,7 +182,13 @@ note "Vite UI on http://localhost:5173"
 note "mock-core API on http://localhost:3101"
 note ""
 note "Press Ctrl+C to stop. Re-run with: cd $WAVEX_OS_DIR && pnpm dev"
-note "Pair with the console anytime with: wavex-os login"
+note ""
+note "Next steps:"
+note "  1. claude login            ← authorize your Claude Max plan (BYOC inference)"
+note "  2. wavex-os login          ← pair this machine with the console"
+note ""
+note "If you skipped the claude CLI install above, T2 inference will halt"
+note "until you run:  npm install -g @anthropic-ai/claude-code && claude login"
 note ""
 
 # Open browser in background once Vite is up

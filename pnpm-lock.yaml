@@ -364,6 +364,9 @@ importers:
 
   packages/wavex-os-server:
     dependencies:
+      '@supabase/supabase-js':
+        specifier: ^2.46.1
+        version: 2.105.4
       '@wavex-os/auth-shim':
         specifier: workspace:*
         version: link:../auth-shim

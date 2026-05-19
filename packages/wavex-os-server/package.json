@@ -12,9 +12,6 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@wavex-os/plugin-onboarding": "workspace:*",
-    "@wavex-os/plugin-tier-router": "workspace:*",
-    "@wavex-os/plugin-flywheel-kernel": "workspace:*",
     "@wavex-os/auth-shim": "workspace:*",
     "@wavex-os/cloud-client": "workspace:*",
     "@wavex-os/composio-shim": "workspace:*",
@@ -22,7 +19,11 @@
     "@wavex-os/healing": "workspace:*",
     "@wavex-os/inference-adapter": "workspace:*",
     "@wavex-os/observability": "workspace:*",
+    "@wavex-os/plugin-flywheel-kernel": "workspace:*",
+    "@wavex-os/plugin-onboarding": "workspace:*",
+    "@wavex-os/plugin-tier-router": "workspace:*",
     "@wavex-os/shared": "workspace:*",
+    "@supabase/supabase-js": "^2.46.1",
     "drizzle-orm": "^0.36.4",
     "fastify": "^4.28.1",
     "js-yaml": "^4.1.0",

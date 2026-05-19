@@ -44,6 +44,14 @@ export { AccountabilityMap } from "./AccountabilityMap.js";
 // from within the page when an event/deliverable is clicked. Exported
 // so MissionControlPage can lazily mount it via a portal.
 export { DeliverableInspector } from "./DeliverableInspector.js";
+// v0.16.0 — Pool B Health + Install Funnel ("auto-sync"). Surfaces:
+//   - is the operator's Mac actually serving customers right now?
+//   - are pillar-suggest chips populating? (24h success rate)
+//   - are users following the install path? (pair → claim → first inference)
+//   - what's Pool B costing this week per subscription?
+// Mounted as the "Pool B" subnav tab in MissionControlPage. Read-only;
+// all endpoints are board-gated server-side.
+export { PoolBHealthWidget } from "./PoolBHealthWidget.js";
 
 const WAVEX_COLOR = "#00d4ff";
 const WAVEX_BG = "color-mix(in srgb, #00d4ff 6%, transparent)";

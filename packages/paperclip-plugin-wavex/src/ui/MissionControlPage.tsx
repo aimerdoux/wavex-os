@@ -30,6 +30,7 @@ import {
 import { MissionControlStreamWidget } from "./MissionControlStreamWidget.js";
 import { MissionControlScoreboardWidget } from "./MissionControlScoreboardWidget.js";
 import { AccountabilityMap } from "./AccountabilityMap.js";
+import { PoolBHealthWidget } from "./PoolBHealthWidget.js";
 import { MissionControlChiefWidget } from "./MissionControlChiefWidget.js";
 import { MissionControlImpactGraphWidget } from "./MissionControlImpactGraphWidget.js";
 import { MissionControlPolishWidget } from "./MissionControlPolishWidget.js";
@@ -44,7 +45,7 @@ const BORDER = "rgba(255,255,255,0.08)";
 const TEXT = "#ffffff";
 const TEXT_MUTED = "rgba(255,255,255,0.55)";
 
-type View = "decisions" | "stream" | "scoreboard" | "graph" | "chief" | "impact" | "ops";
+type View = "decisions" | "stream" | "scoreboard" | "graph" | "chief" | "impact" | "ops" | "pool-b";
 
 interface Tab {
   id: View;
@@ -60,6 +61,7 @@ const TABS: Tab[] = [
   { id: "impact", label: "Impact", hint: "task → KPI chain" },
   { id: "chief", label: "Chief", hint: "rules + originations" },
   { id: "ops", label: "Operations", hint: "cost · capacity · burn" },
+  { id: "pool-b", label: "Pool B", hint: "auto-sync · Mac uptime · install funnel · spend" },
 ];
 
 export function MissionControlPage({ context }: PluginPageProps) {
@@ -229,6 +231,8 @@ export function MissionControlPage({ context }: PluginPageProps) {
           <MissionControlImpactGraphWidget {...widgetProps} />
         ) : view === "chief" ? (
           <MissionControlChiefWidget {...widgetProps} />
+        ) : view === "pool-b" ? (
+          <PoolBHealthWidget {...widgetProps} />
         ) : (
           <MissionControlPolishWidget {...widgetProps} />
         )}

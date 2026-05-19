@@ -560,6 +560,81 @@ const plugin = definePlugin({
     );
 
     // -------------------------------------------------------------------
+    // Mission Control · Pool B Health + Install Funnel ("auto-sync").
+    //
+    // Five read-only endpoints that surface Pool B liveness, install/
+    // pairing funnel conversion, and chip-health (recent pillar-suggest
+    // success rate). All gated on board auth via the underlying server
+    // routes. Cached server-side for 30s; pass `fresh=true` to bypass.
+    // -------------------------------------------------------------------
+    ctx.data.register("pool-b-health-recent", async (params) => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      const limit = Number(params?.limit ?? 20);
+      const fresh = params?.fresh ? "&fresh=1" : "";
+      try {
+        const r = await localFetch(`${base}/api/pool-b-health/recent?limit=${limit}${fresh}`);
+        if (!r.ok) return { ok: false, status: r.status, rows: [] };
+        return await r.json();
+      } catch (err) {
+        return { ok: false, error: String(err), rows: [] };
+      }
+    });
+
+    ctx.data.register("pool-b-health-devices", async (params) => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      const fresh = params?.fresh ? "?fresh=1" : "";
+      try {
+        const r = await localFetch(`${base}/api/pool-b-health/devices${fresh}`);
+        if (!r.ok) return { ok: false, status: r.status, rows: [] };
+        return await r.json();
+      } catch (err) {
+        return { ok: false, error: String(err), rows: [] };
+      }
+    });
+
+    ctx.data.register("pool-b-health-pairings", async (params) => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      const fresh = params?.fresh ? "?fresh=1" : "";
+      try {
+        const r = await localFetch(`${base}/api/pool-b-health/pairings${fresh}`);
+        if (!r.ok) return { ok: false, status: r.status, rows: [] };
+        return await r.json();
+      } catch (err) {
+        return { ok: false, error: String(err), rows: [] };
+      }
+    });
+
+    ctx.data.register("pool-b-health-spend", async (params) => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      const days = Number(params?.days ?? 14);
+      const fresh = params?.fresh ? "&fresh=1" : "";
+      try {
+        const r = await localFetch(`${base}/api/pool-b-health/spend?days=${days}${fresh}`);
+        if (!r.ok) return { ok: false, status: r.status, rows: [] };
+        return await r.json();
+      } catch (err) {
+        return { ok: false, error: String(err), rows: [] };
+      }
+    });
+
+    ctx.data.register("pool-b-health-funnel", async (params) => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      const fresh = params?.fresh ? "?fresh=1" : "";
+      try {
+        const r = await localFetch(`${base}/api/pool-b-health/funnel${fresh}`);
+        if (!r.ok) return { ok: false, status: r.status, summary: null };
+        return await r.json();
+      } catch (err) {
+        return { ok: false, error: String(err), summary: null };
+      }
+    });
+
+    // -------------------------------------------------------------------
     // Mission Control · Connectors directory (v0.8.0).
     //
     // Three handlers backing the sidebar-triggered directory modal:
