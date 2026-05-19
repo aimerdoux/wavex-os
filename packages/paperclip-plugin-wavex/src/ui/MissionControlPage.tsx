@@ -99,6 +99,12 @@ export function MissionControlPage({ context }: PluginPageProps) {
     impact: counts.data?.impact ?? 0,
     chief: counts.data?.chief ?? 0,
     ops: counts.data?.ops ?? 0,
+    // Pool B Health doesn't have a backend-driven badge yet — the
+    // mission-control-tab-counts RPC predates it. Leave at 0 so the
+    // F5 tab-badges renderer skips it. Future: surface
+    // pillar_suggest_calls_24h - pillar_suggest_success_24h as the
+    // badge when > 0 (chip failures need attention).
+    "pool-b": 0,
   };
 
   if (!companyId) {
