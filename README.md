@@ -119,6 +119,19 @@ tony-apple-qa init
 
 ---
 
+## Quick evaluation (pre-npm)
+
+The `tony-apple-qa` npm package is pending publication. Until the token is live, clone the repo and run the wizard directly:
+
+```bash
+git clone https://github.com/aimerdoux/wavex-os.git
+cd wavex-os
+pnpm install          # install pnpm first: npm install -g pnpm
+pnpm dev:no-paperclip # starts wizard at http://localhost:5173
+```
+
+---
+
 ## Quickstart (from source)
 
 You need [Node ≥18](https://nodejs.org), [pnpm ≥9](https://pnpm.io), [git](https://git-scm.com), and a [Claude Max](https://claude.ai/upgrade) subscription on the same machine (the wizard reads from the system keychain).
