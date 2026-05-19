@@ -150,7 +150,9 @@ Show a concrete output artifact — a smoke-test run result, a regression covera
 
 *Wait. Do not talk.*
 
-**If yes:** "Great — I'll send the trial link and onboarding invite within the hour."
+**If yes:** "Great — I'll send you the booking link right now — you can pick a 45-minute Day 1 onboarding slot directly. Trial starts the moment you book, no card required."
+
+*Send: `https://cal.com/wavex/design-partner` — or paste the link into chat if screen-sharing. If the link is unavailable, tell them you'll follow up with a calendar invite within the hour and do it immediately post-call.*
 
 **If "we need to involve someone else":** "Totally reasonable. Who else needs to see this? I can do a 20-minute replay for them this week, or I can send you a recording of this session."
 
@@ -168,3 +170,7 @@ Show a concrete output artifact — a smoke-test run result, a regression covera
 ---
 
 *Grounded in: [WAVAAAA-418](/WAVAAAA/issues/WAVAAAA-418) demo readiness brief, [WAVAAAA-346](/WAVAAAA/issues/WAVAAAA-346) pricing brief (CEO-approved 2026-05-18), [WAVAAAA-427](/WAVAAAA/issues/WAVAAAA-427) onboarding spec, product README at `packages/tony-apple-qa/README.md`.*
+
+---
+
+> **Cal.com status (as of 2026-05-19):** `CALENDAR_HREF = 'cal.com/wavex/design-partner'` is a placeholder — not yet confirmed live ([WAVAAAA-120](/WAVAAAA/issues/WAVAAAA-120)). Until confirmed: send prospects a direct calendar invite post-call. Do not display the raw cal.com URL on the LP or in written follow-ups until the link is validated.
