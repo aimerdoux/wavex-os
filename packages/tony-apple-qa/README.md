@@ -13,6 +13,18 @@ npm install -g tony-apple-qa
 tony-apple-qa init
 ```
 
+## Quick evaluation (pre-npm)
+
+If the npm package isn't published yet, evaluate directly from source:
+
+```bash
+git clone https://github.com/aimerdoux/wavex-os.git
+cd wavex-os
+npm install -g pnpm   # if pnpm is not installed
+pnpm install
+pnpm dev:no-paperclip  # starts the onboarding wizard at http://localhost:5173
+```
+
 ## Quick start
 
 1. Install the CLI above.
