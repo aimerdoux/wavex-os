@@ -540,7 +540,14 @@ function applyManifestOverlay(
 
   // Strip lines starting with "# WaveX ..."
   let cleaned = bundleMd.replace(/^# WaveX [^\n]*\n?/gm, "");
-  // Strip phrases / literals / schema refs / paths
+  // Transition safety net (Phase 10 — see docs/TENANTS.md): strip
+  // dogfood (WaveX-Experiences-tenant) patterns that still appear in
+  // 9 mirror SKILL files under packages/onboarding-ui/public/agent-
+  // templates/. Long-term these patterns belong in the operator's
+  // tenant manifest, not in the OSS template source. As those files
+  // get genericized in follow-up PRs, drop the matching entries from
+  // this list. Tracking: task #144 (Phase 10 prep) + docs/TENANTS.md
+  // "What still needs to be cleaned up" section.
   const stripPatterns: Array<RegExp | string> = [
     /Bookings GMV/gi, /booking_gmv/gi,
     "$25,000", "$25000",

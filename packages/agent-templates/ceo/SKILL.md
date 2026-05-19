@@ -19,6 +19,6 @@ Planned content sources from this codebase:
 - `SKILL_FLEET_ALIGNMENT.md` (Chief of Staff)
 - `SKILL_VERIFY_BEFORE_CLAIM.md` (every agent)
 - `SKILL_RECOVERY_PROTOCOL.md` (Recovery Engineer)
-- `SKILL_DEPLOYED_ARTIFACT_VERIFICATION.md` (CTO + CDO/Telemetry, lesson from WAV-3293)
+- `SKILL_DEPLOYED_ARTIFACT_VERIFICATION.md` (CTO + CDO/Telemetry)
 
 Default KPIs for this role: cycle_completion_rate
