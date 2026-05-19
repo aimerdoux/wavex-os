@@ -62,14 +62,12 @@ export function PrivacyPanel({ session }: PrivacyPanelProps): JSX.Element {
         if (!cancelled) setHires((hireData ?? []) as HireWithCatalog[]);
 
         if (hireData && hireData.length > 0) {
-          const hireIds = (hireData as HireWithCatalog[]).map((h) => h.hire_id);
+          // SECURITY DEFINER RPC: filters digest_access_log by the
+          // caller's subscription server-side via auth.uid() join.
+          // Drops the client-side .in("hired_agent_id", hireIds)
+          // filter — the RPC already scopes to the caller's hires.
           const { data: logData } = await supabase
-            .schema("wavex_os")
-            .from("digest_access_log")
-            .select("id,hired_agent_id,fields_accessed,purpose,accessed_at")
-            .in("hired_agent_id", hireIds)
-            .order("accessed_at", { ascending: false })
-            .limit(100);
+            .rpc("wavex_os_my_digest_access_log", { p_limit: 100 });
           if (!cancelled) setLogs((logData ?? []) as AccessLogRow[]);
         }
       } catch (e) {
@@ -84,11 +82,11 @@ export function PrivacyPanel({ session }: PrivacyPanelProps): JSX.Element {
   async function revokeHire(hireId: string): Promise<void> {
     if (!supabase) return;
     setRevoking(hireId);
+    // SECURITY DEFINER RPC: verifies the hire belongs to the caller's
+    // subscription (via auth.uid()) before flipping status. Treats
+    // not-owned hires the same as not-found (no existence leak).
     const { error: revokeErr } = await supabase
-      .schema("wavex_os")
-      .from("hired_expert_agents")
-      .update({ status: "revoked", revoked_at: new Date().toISOString() })
-      .eq("id", hireId);
+      .rpc("wavex_os_revoke_hire", { p_hire_id: hireId });
     setRevoking(null);
     if (revokeErr) {
       setError(`Revoke failed: ${revokeErr.message}`);

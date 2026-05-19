@@ -139,11 +139,37 @@ async function writeLedger(row: {
   });
 
   if (!supabase) return;
-  // Fire-and-forget; we don't block the response.
+  // Fire-and-forget. Route through the wavex_os_record_usage RPC
+  // instead of direct .schema("wavex_os").from("usage_ledger") — the
+  // wavex_os schema isn't exposed via PostgREST, so the direct insert
+  // was silently failing with "schema must be one of public,
+  // graphql_public, meta_ads" in production. RPC takes the same
+  // columns as positional params (see migration 20260516000001).
+  //
+  // Pool A rows have no subscription_id / device_id (anonymous hub
+  // serving free-tier callers); pass nulls explicitly so the RPC's
+  // required p_subscription_id param doesn't end up as `undefined`
+  // in the JSON-RPC payload.
   void supabase
-    .schema("wavex_os")
-    .from("usage_ledger")
-    .insert(row)
+    .rpc("wavex_os_record_usage", {
+      p_pool: row.pool,
+      p_subscription_id: null,
+      p_request_id: row.request_id,
+      p_model: row.model,
+      p_prompt_tokens: row.prompt_tokens,
+      p_completion_tokens: row.completion_tokens,
+      p_cache_read_tokens: row.cache_read_tokens,
+      p_cache_creation_tokens: row.cache_creation_tokens,
+      p_cost_cents: row.cost_cents,
+      p_status: row.status,
+      p_device_id: null,
+      p_error_class: row.error_class ?? null,
+      p_install_id: row.install_id,
+      p_email: row.email,
+      p_ip_24: row.ip_24,
+      p_deliverable_id: null,
+      p_agent_id: null,
+    })
     .then((r: { error: unknown }) => {
       if (r.error) console.error("usage_ledger insert failed", r.error);
     });

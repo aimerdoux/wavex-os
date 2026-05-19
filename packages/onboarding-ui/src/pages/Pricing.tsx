@@ -188,13 +188,14 @@ export default function Pricing(): JSX.Element {
       return;
     }
     void (async () => {
+      // SECURITY DEFINER RPC: returns the caller's active or trialing
+      // subscription via auth.uid() join. Avoids direct PostgREST
+      // access to the wavex_os schema (intentionally not exposed).
       const { data } = await supabase
-        .schema("wavex_os")
-        .from("subscriptions")
-        .select("tier,status")
-        .in("status", ["trialing", "active"])
-        .maybeSingle();
-      setCurrentTier((data?.tier ?? null) as "founder" | "growth" | "custom" | null);
+        .rpc("wavex_os_subscription_lookup_by_user");
+      const row = Array.isArray(data) && data.length > 0 ? data[0] : null;
+      const live = row && (row.status === "trialing" || row.status === "active") ? row : null;
+      setCurrentTier((live?.tier ?? null) as "founder" | "growth" | "custom" | null);
     })();
   }, [session]);
 
@@ -204,30 +205,20 @@ export default function Pricing(): JSX.Element {
     const supabase = getSupabase();
     if (!supabase) return;
 
-    // If operator already has a high-enough tier, hire directly.
+    // If operator already has a high-enough tier, hire directly via
+    // the SECURITY DEFINER RPC. The RPC verifies the subscription is
+    // owned by auth.uid() AND that the customer's tier meets the
+    // catalog entry's required_tier — server-side, atomically. No
+    // direct PostgREST access to the wavex_os schema required.
     const tierOrder = { founder: 0, growth: 1, custom: 2 };
     if (currentTier && tierOrder[currentTier] >= tierOrder[requiredTier]) {
-      const subResult = await supabase
-        .schema("wavex_os")
-        .from("subscriptions")
-        .select("id")
-        .in("status", ["trialing", "active"])
-        .maybeSingle();
-      if (!subResult.data) {
-        setError("Could not find your active subscription. Try refreshing.");
-        return;
-      }
-      const insertResult = await supabase
-        .schema("wavex_os")
-        .from("hired_expert_agents")
-        .insert({
-          subscription_id: subResult.data.id,
-          catalog_id: catalogId,
-          status: "active",
-          agreement_version: "1.0",
+      const hireResult = await supabase
+        .rpc("wavex_os_hire_expert", {
+          p_catalog_id: catalogId,
+          p_agreement_version: "1.0",
         });
-      if (insertResult.error) {
-        setError(`Hire failed: ${insertResult.error.message}`);
+      if (hireResult.error) {
+        setError(`Hire failed: ${hireResult.error.message}`);
         return;
       }
       navigate("/?hired=" + encodeURIComponent(catalogId));

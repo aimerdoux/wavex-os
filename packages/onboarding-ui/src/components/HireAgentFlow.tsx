@@ -59,12 +59,13 @@ export function HireAgentFlow({ session, currentTier, onHireRequest }: HireAgent
     let cancelled = false;
     void (async () => {
       try {
+        // Route through the SECURITY DEFINER RPC instead of direct
+        // PostgREST. The wavex_os schema is intentionally NOT exposed
+        // (would force every table to be anon-safe). RPC keeps the
+        // boundary inside the function body. Same shape as a direct
+        // select on expert_agent_catalog.
         const { data: cat, error: catErr } = await supabase
-          .schema("wavex_os")
-          .from("expert_agent_catalog")
-          .select("id,display_name,purpose,data_scope,output_types,required_tier,daily_token_cap")
-          .eq("is_active", true)
-          .order("required_tier");
+          .rpc("wavex_os_list_active_catalog");
         if (catErr) throw catErr;
         if (!cancelled) setCatalog((cat ?? []) as CatalogEntry[]);
 

@@ -54,12 +54,14 @@ const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 });
 
 // Fetch active hires joined to catalog (so we get scope + public key).
+// Routes through the wavex_os_my_active_hires_for_envelopes RPC
+// instead of direct .schema("wavex_os").from(...) — the wavex_os
+// schema is intentionally NOT exposed via PostgREST, so the direct
+// join was 400'ing with "schema must be one of public, graphql_public,
+// meta_ads". The RPC filters by auth.uid() server-side and returns
+// the (catalog_id, data_scope, recipient_public_key) tuples we need.
 const { data: hires, error: hireErr } = await sb
-  .schema("wavex_os")
-  .from("hired_expert_agents")
-  .select("catalog_id, expert_agent_catalog (id, data_scope, recipient_public_key)")
-  .eq("subscription_id", SUBSCRIPTION_ID)
-  .eq("status", "active");
+  .rpc("wavex_os_my_active_hires_for_envelopes");
 
 if (hireErr) {
   console.error(`Hire lookup failed: ${hireErr.message}`);
@@ -72,21 +74,22 @@ if (!hires || hires.length === 0) {
   process.exit(0);
 }
 
-// Build a field → [recipient] map.
+// Build a field → [recipient] map. RPC returns flat tuples
+// {catalog_id, data_scope, recipient_public_key} — no nested catalog
+// object like the prior PostgREST join.
 const fieldRecipients = {}; // { fieldName: [{ catalog_id, publicKey: Uint8Array }] }
 for (const h of hires) {
-  const c = h.expert_agent_catalog;
-  if (!c?.recipient_public_key) continue;
+  if (!h.recipient_public_key) continue;
   // Supabase returns bytea as "\\x<hex>" string.
-  const hex = String(c.recipient_public_key).replace(/^\\x/, "");
+  const hex = String(h.recipient_public_key).replace(/^\\x/, "");
   const publicKey = Buffer.from(hex, "hex");
   if (publicKey.length !== 32) {
-    console.error(`Catalog ${c.id} has invalid public key length: ${publicKey.length}`);
+    console.error(`Catalog ${h.catalog_id} has invalid public key length: ${publicKey.length}`);
     continue;
   }
-  for (const field of c.data_scope ?? []) {
+  for (const field of h.data_scope ?? []) {
     if (!fieldRecipients[field]) fieldRecipients[field] = [];
-    fieldRecipients[field].push({ catalog_id: c.id, publicKey });
+    fieldRecipients[field].push({ catalog_id: h.catalog_id, publicKey });
   }
 }
 
