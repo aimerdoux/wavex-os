@@ -16,17 +16,32 @@ const COMPANIES = [
   { prefix: "WAV", label: "wavex-os/ricoma-live-001" },
 ];
 
-const MC_LABELS = [
-  "Activity Stream", "Deliverables", "KPI Scoreboard",
-  "Node Profile", "Accountability Graph", "Chief of Staff", "Operations",
-];
+// v0.7.0: consolidated to ONE Mission Control widget. The single section
+// has aria-label "Mission Control" exactly (no em-dash suffix); internal
+// panels (Activity / Context / KPI cards / Ops) live inside it as
+// non-section divs.
+const MC_LABELS = ["Mission Control"];
 
 const browser = await chromium.launch({ headless: true });
 const ctx = await browser.newContext({ viewport: { width: 1600, height: 1400 } });
 const page = await ctx.newPage();
 const consoleMsgs = [];
 const netFails = [];
-page.on("console", (m) => { if (m.type() === "error") consoleMsgs.push(m.text().slice(0, 280)); });
+page.on("console", (m) => { if (m.type() === "error") consoleMsgs.push(m.text().slice(0, 4000)); });
+await page.addInitScript(() => {
+  const orig = console.error;
+  console.error = (...args) => {
+    // React's key warning is format=args[0], compName=args[1], stack=args[2]
+    if (typeof args[0] === "string" && args[0].includes("unique \"key\" prop")) {
+      const compName = args[1];
+      const stack = args[2];
+      console.error.__warned = (console.error.__warned ?? 0) + 1;
+      orig.call(console, `KEY-WARN[${compName}] ${stack}`);
+      return;
+    }
+    orig.apply(console, args);
+  };
+});
 page.on("requestfailed", (r) => netFails.push(`${r.method()} ${r.url()} — ${r.failure()?.errorText}`));
 page.on("response", (r) => { if (r.status() >= 400) netFails.push(`${r.status()} ${r.url()}`); });
 
@@ -38,8 +53,14 @@ for (const c of COMPANIES) {
   await page.waitForTimeout(5000); // let plugins lazy-load
 
   for (const label of MC_LABELS) {
-    const count = await page.getByText(`Mission Control — ${label}`, { exact: false }).count();
+    const count = await page.locator(`section[aria-label="${label}"]`).count();
     console.log(`  ${count > 0 ? "✓" : "✗"} ${label} (${count})`);
+  }
+  // Unified surface — confirm internal panels are present.
+  const internalPanels = ["Activity", "Context", "KPI · MRR", "Recent deliverables"];
+  for (const panel of internalPanels) {
+    const present = (await page.getByText(panel, { exact: false }).count()) > 0;
+    console.log(`    ${present ? "·" : "✗"} internal: ${panel}`);
   }
 
   const hasNative = (await page.getByText("Agents Enabled", { exact: false }).count()) > 0;

@@ -18,20 +18,22 @@
 import type { PaperclipPluginManifestV1 } from "@wavex-os/plugin-sdk-shim";
 
 const PLUGIN_ID = "wavex-os.paperclip-plugin";
-const PLUGIN_VERSION = "0.5.0";
+const PLUGIN_VERSION = "0.15.0";
 
 // Slot IDs are referenced from the host's UI registry. Keep them stable
 // (operator's saved-layout state references them by id).
 const INCEPTION_STATUS_SLOT = "wavex-inception-status";
+const CONNECTORS_SIDEBAR_SLOT = "wavex-connectors";
 const WAVEX_SETTINGS_SLOT = "wavex-preferences";
-// Mission Control dashboard widgets — the 7 supported surfaces.
-const MC_STREAM_SLOT = "wavex-mission-control-stream";
-const MC_DELIVERABLES_SLOT = "wavex-mission-control-deliverables";
-const MC_SCOREBOARD_SLOT = "wavex-mission-control-scoreboard";
-const MC_NODE_PROFILE_SLOT = "wavex-mission-control-node-profile";
-const MC_GRAPH_SLOT = "wavex-mission-control-graph";
-const MC_CHIEF_SLOT = "wavex-mission-control-chief";
-const MC_POLISH_SLOT = "wavex-mission-control-polish";
+// v0.7.0: collapsed the 7 prior Mission Control widgets (Stream,
+// Scoreboard, Causal Impact, Deliverables, Node Profile, Graph, Chief,
+// Operations) into one unified surface. The internal layouts still
+// reuse all the same wavex MC endpoints — only the slot composition
+// changed. Standalone widget files remain in the repo as dead code in
+// case we ever need to re-register them, but they're no longer exported.
+const MC_UNIFIED_SLOT = "wavex-mission-control";
+const MC_PAGE_SLOT = "wavex-mission-control-page";
+const MC_SIDEBAR_SLOT = "wavex-mission-control-sidebar";
 
 const manifest: PaperclipPluginManifestV1 = {
   id: PLUGIN_ID,
@@ -56,65 +58,52 @@ const manifest: PaperclipPluginManifestV1 = {
   },
   ui: {
     slots: [
-      // Phase 1.4 — the wedge. Lands first so it sits at the top of the
-      // dashboard widget column where it has the most demo visibility.
+      // The single unified Mission Control surface (v0.7.0). Composes
+      // hero KPIs + activity spine + context rail + ops footer into one
+      // decision-making surface. Replaces the prior 7 separate widgets.
       {
         type: "dashboardWidget",
-        id: MC_STREAM_SLOT,
-        displayName: "Mission Control — Activity Stream",
-        exportName: "MissionControlStreamWidget",
+        id: MC_UNIFIED_SLOT,
+        displayName: "Mission Control",
+        exportName: "MissionControlUnifiedWidget",
       },
-      // Phase 2 — Deliverables ledger; directly below the Stream so the
-      // operator can pivot from "what just happened" to "what was made".
+      // v0.9.0 — full-page Mission Control mounted at
+      // /<company>/plugins/wavex-os.paperclip-plugin. Same data flow as
+      // the dashboard widget but as a dedicated route with subnav
+      // across all 6 views (Stream / Scoreboard / Graph / Impact /
+      // Chief / Operations).
       {
-        type: "dashboardWidget",
-        id: MC_DELIVERABLES_SLOT,
-        displayName: "Mission Control — Deliverables",
-        exportName: "MissionControlDeliverablesWidget",
+        type: "page",
+        id: MC_PAGE_SLOT,
+        displayName: "Mission Control",
+        exportName: "MissionControlPage",
+        // Mounts at /<companyPrefix>/mission-control via Paperclip's
+        // `:pluginRoutePath` catch-all route. Also reachable via the
+        // generic /<companyPrefix>/plugins/<pluginId>.
+        routePath: "mission-control",
       },
-      // Phase 3 — KPI scoreboard: attainment ratio per KPI from the
-      // ExpectedKpiImpact ledger.
+      // v0.9.1 — Mission Control sidebar entry. Renders a nav link at the
+      // top of the sidebar so the full-page MC route is one click away.
       {
-        type: "dashboardWidget",
-        id: MC_SCOREBOARD_SLOT,
-        displayName: "Mission Control — KPI Scoreboard",
-        exportName: "MissionControlScoreboardWidget",
-      },
-      // Phase 4 — Node profile: open assignments per node + arbitrary
-      // task-id chain inspector.
-      {
-        type: "dashboardWidget",
-        id: MC_NODE_PROFILE_SLOT,
-        displayName: "Mission Control — Node Profile",
-        exportName: "MissionControlNodeProfileWidget",
-      },
-      // Phase 5 — Accountability graph (force-directed SVG with
-      // structural + work-flow edges, time scrubber).
-      {
-        type: "dashboardWidget",
-        id: MC_GRAPH_SLOT,
-        displayName: "Mission Control — Accountability Graph",
-        exportName: "MissionControlGraphWidget",
-      },
-      // Phase 6 — Chief of Staff config + origination rules + evaluator.
-      {
-        type: "dashboardWidget",
-        id: MC_CHIEF_SLOT,
-        displayName: "Mission Control — Chief of Staff",
-        exportName: "MissionControlChiefWidget",
-      },
-      // Phase 7 — Operations polish (cost / capacity / weekly export).
-      {
-        type: "dashboardWidget",
-        id: MC_POLISH_SLOT,
-        displayName: "Mission Control — Operations",
-        exportName: "MissionControlPolishWidget",
+        type: "sidebar",
+        id: MC_SIDEBAR_SLOT,
+        displayName: "Mission Control",
+        exportName: "MissionControlSidebarEntry",
       },
       {
         type: "sidebar",
         id: INCEPTION_STATUS_SLOT,
         displayName: "Inception Status",
         exportName: "InceptionStatusPanel",
+      },
+      // v0.8.0 — Connectors directory entry. Renders a button in the
+      // main sidebar nav; click opens a portaled modal with the live
+      // Composio catalog + OAuth-driven connect/disconnect.
+      {
+        type: "sidebar",
+        id: CONNECTORS_SIDEBAR_SLOT,
+        displayName: "Connectors",
+        exportName: "ConnectorsSidebarEntry",
       },
       {
         type: "settingsPage",

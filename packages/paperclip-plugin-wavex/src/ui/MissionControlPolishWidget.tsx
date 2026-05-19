@@ -63,7 +63,38 @@ interface WeeklyResponse {
   error?: string;
 }
 
-type Tab = "cost" | "capacity" | "weekly";
+type Tab = "cost" | "capacity" | "weekly" | "attribution";
+
+interface CostPerKpiResponse {
+  ok: boolean;
+  rows?: Array<{
+    kpiId: string;
+    totalCostUSD: number;
+    totalKpiDelta: number;
+    dollarsPerPoint: number | null;
+    contributingTasks: number;
+    topContributors: Array<{
+      taskRefId: string;
+      costUSD: number;
+      deliverableCount: number;
+    }>;
+  }>;
+  error?: string;
+}
+interface HeatmapResponse {
+  ok: boolean;
+  nodes?: string[];
+  hours?: string[];
+  cells?: number[][];
+  error?: string;
+}
+interface BurnRateResponse {
+  ok: boolean;
+  daily?: Array<{ date: string; costUSD: number }>;
+  projectedRunwayDays?: number | null;
+  dailyBudgetUSD?: number | null;
+  error?: string;
+}
 
 export function MissionControlPolishWidget({ context }: PluginWidgetProps) {
   const companyId = context.companyId ?? "";
@@ -78,6 +109,18 @@ export function MissionControlPolishWidget({ context }: PluginWidgetProps) {
   );
   const weekly = usePluginData<WeeklyResponse>(
     "mission-control-weekly-export",
+    { companyId },
+  );
+  const costPerKpi = usePluginData<CostPerKpiResponse>(
+    "mission-control-cost-per-kpi",
+    { companyId },
+  );
+  const heatmap = usePluginData<HeatmapResponse>(
+    "mission-control-capacity-heatmap",
+    { companyId },
+  );
+  const burn = usePluginData<BurnRateResponse>(
+    "mission-control-burn-rate",
     { companyId },
   );
   const fetchCsv = usePluginAction("mission-control-weekly-export-csv");
@@ -102,6 +145,13 @@ export function MissionControlPolishWidget({ context }: PluginWidgetProps) {
         <Tab tab="weekly" active={tab} onClick={() => setTab("weekly")}>
           Weekly export
         </Tab>
+        <Tab
+          tab="attribution"
+          active={tab}
+          onClick={() => setTab("attribution")}
+        >
+          Attribution
+        </Tab>
       </div>
       {tab === "cost" ? (
         <CostView
@@ -114,6 +164,22 @@ export function MissionControlPolishWidget({ context }: PluginWidgetProps) {
           loading={capacity.loading && !capacity.data}
           error={capacity.error?.message}
           data={capacity.data}
+        />
+      ) : tab === "attribution" ? (
+        <AttributionView
+          costPerKpi={costPerKpi.data}
+          heatmap={heatmap.data}
+          burn={burn.data}
+          loading={
+            (costPerKpi.loading && !costPerKpi.data) ||
+            (heatmap.loading && !heatmap.data) ||
+            (burn.loading && !burn.data)
+          }
+          error={
+            costPerKpi.error?.message ??
+            heatmap.error?.message ??
+            burn.error?.message
+          }
         />
       ) : (
         <WeeklyView
@@ -352,6 +418,185 @@ function Bar({ value, max }: { value: number; max: number }) {
     </div>
   );
 }
+
+function AttributionView({
+  costPerKpi,
+  heatmap,
+  burn,
+  loading,
+  error,
+}: {
+  costPerKpi: CostPerKpiResponse | null | undefined;
+  heatmap: HeatmapResponse | null | undefined;
+  burn: BurnRateResponse | null | undefined;
+  loading: boolean;
+  error: string | undefined;
+}) {
+  if (loading)
+    return <div style={{ opacity: 0.6, fontSize: 13 }}>Loading attribution…</div>;
+  if (error)
+    return <div style={{ color: "#ff6b6b", fontSize: 13 }}>{error}</div>;
+  const rows = costPerKpi?.rows ?? [];
+  const cells = heatmap?.cells ?? [];
+  const burnDaily = burn?.daily ?? [];
+  const burnMax = burnDaily.reduce((m, d) => Math.max(m, d.costUSD), 0);
+  const totalSpend = burnDaily.reduce((a, b) => a + b.costUSD, 0);
+  return (
+    <div style={{ display: "grid", gap: 14 }}>
+      <section>
+        <div style={{ fontSize: 11, opacity: 0.65, marginBottom: 4 }}>
+          $ per KPI point
+        </div>
+        {rows.length === 0 ? (
+          <div style={{ opacity: 0.7, fontSize: 13 }}>
+            No measured KPI impacts in the window yet. Declare impacts +
+            record measurements to populate this view.
+          </div>
+        ) : (
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr style={{ opacity: 0.6, fontSize: 11, textAlign: "left" }}>
+                <th style={attTh}>KPI</th>
+                <th style={attTh}>spent</th>
+                <th style={attTh}>delta</th>
+                <th style={attTh}>$/point</th>
+                <th style={attTh}>tasks</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.kpiId} style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+                  <td style={attTd}>{r.kpiId}</td>
+                  <td style={attTd}>${r.totalCostUSD.toFixed(2)}</td>
+                  <td style={attTd}>
+                    {r.totalKpiDelta >= 0 ? "+" : ""}
+                    {r.totalKpiDelta.toFixed(1)}
+                  </td>
+                  <td style={{ ...attTd, color: WAVEX_COLOR, fontWeight: 600 }}>
+                    {r.dollarsPerPoint == null ? "—" : `$${r.dollarsPerPoint.toFixed(2)}`}
+                  </td>
+                  <td style={attTd}>{r.contributingTasks}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      <section>
+        <div
+          style={{
+            fontSize: 11,
+            opacity: 0.65,
+            marginBottom: 4,
+            display: "flex",
+            justifyContent: "space-between",
+          }}
+        >
+          <span>Burn rate (last {burnDaily.length}d)</span>
+          <span>
+            total ${totalSpend.toFixed(2)}
+            {burn?.projectedRunwayDays != null
+              ? ` · runway ${burn.projectedRunwayDays}d`
+              : ""}
+          </span>
+        </div>
+        {burnDaily.length === 0 ? (
+          <div style={{ opacity: 0.7, fontSize: 13 }}>No cost events.</div>
+        ) : (
+          <div style={{ display: "flex", gap: 1, alignItems: "flex-end", height: 60 }}>
+            {burnDaily.map((d) => {
+              const h = burnMax === 0 ? 0 : Math.round((d.costUSD / burnMax) * 60);
+              return (
+                <div
+                  key={d.date}
+                  title={`${d.date}: $${d.costUSD.toFixed(2)}`}
+                  style={{
+                    flex: 1,
+                    height: h,
+                    background: WAVEX_COLOR,
+                    opacity: 0.7,
+                  }}
+                />
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      <section>
+        <div style={{ fontSize: 11, opacity: 0.65, marginBottom: 4 }}>
+          Capacity heatmap (7d, {cells.length} nodes × {heatmap?.hours?.length ?? 0}h)
+        </div>
+        {cells.length === 0 ? (
+          <div style={{ opacity: 0.7, fontSize: 13 }}>No activity events.</div>
+        ) : (
+          <HeatmapSvg
+            nodes={heatmap?.nodes ?? []}
+            cells={cells}
+          />
+        )}
+      </section>
+    </div>
+  );
+}
+
+function HeatmapSvg({ nodes, cells }: { nodes: string[]; cells: number[][] }) {
+  const rows = cells.length;
+  const cols = cells[0]?.length ?? 0;
+  const max = cells.reduce(
+    (m, row) => Math.max(m, row.reduce((mm, v) => Math.max(mm, v), 0)),
+    0,
+  );
+  const cellW = 4;
+  const cellH = 12;
+  const labelW = 110;
+  const width = labelW + cols * cellW;
+  const height = rows * cellH;
+  return (
+    <svg width="100%" viewBox={`0 0 ${width} ${height}`} style={{ background: "rgba(0,0,0,0.18)", borderRadius: 4 }}>
+      {nodes.map((n, ri) => (
+        <text
+          key={`l-${ri}`}
+          x={4}
+          y={ri * cellH + cellH - 3}
+          fontSize="9"
+          fill="rgba(255,255,255,0.7)"
+        >
+          {n.length > 18 ? `${n.slice(0, 17)}…` : n}
+        </text>
+      ))}
+      {cells.flatMap((row, ri) =>
+        row.map((v, ci) => {
+          if (v === 0) return null;
+          const intensity = max === 0 ? 0 : v / max;
+          return (
+            <rect
+              key={`c-${ri}-${ci}`}
+              x={labelW + ci * cellW}
+              y={ri * cellH + 1}
+              width={cellW - 0.5}
+              height={cellH - 2}
+              fill={`hsl(${280 - Math.round(intensity * 280)}, 80%, 55%)`}
+              opacity={0.35 + intensity * 0.65}
+            >
+              <title>{`${v} events`}</title>
+            </rect>
+          );
+        }),
+      )}
+    </svg>
+  );
+}
+
+const attTh: React.CSSProperties = {
+  textAlign: "left",
+  padding: "4px 6px",
+  fontWeight: 500,
+};
+const attTd: React.CSSProperties = {
+  padding: "5px 6px",
+};
 
 function Card({
   label,

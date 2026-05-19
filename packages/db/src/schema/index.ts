@@ -15,3 +15,4 @@ export * from "./expected-kpi-impacts.js";
 export * from "./mission-control-events.js";
 export * from "./assignment-links.js";
 export * from "./chief-of-staff.js";
+export * from "./kpi-snapshots.js";

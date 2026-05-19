@@ -12,6 +12,7 @@
  */
 
 import { useMemo, useState } from "react";
+import { DeliverableInspector } from "./DeliverableInspector.js";
 import {
   usePluginData,
   type PluginWidgetProps,
@@ -200,8 +201,9 @@ export function MissionControlDeliverablesWidget({
         </table>
       )}
       {selected ? (
-        <Inspector
-          deliverable={selected}
+        <DeliverableInspector
+          companyId={companyId}
+          deliverableId={selected.id}
           onClose={() => setSelected(null)}
         />
       ) : null}

@@ -334,6 +334,106 @@ export async function getScoreboard(
   });
 }
 
+// ─── Phase 2 v2 — scoreboard with history + status + freshness ─────────
+
+import { asc as ascCmp, gte } from "drizzle-orm";
+import { mcKpiSnapshots } from "@wavex-os/db";
+const ascSort = ascCmp;
+
+export type KpiStatus = "on-track" | "at-risk" | "off-track";
+
+export interface KpiHistoryPoint {
+  at: string;
+  value: number;
+}
+
+export interface KpiScoreboardRich extends KpiScoreboardEntry {
+  /** Most recent sampled value (or cumulativeActual if no snapshots). */
+  current: number;
+  /** cumulativeEstimated — convenience alias surfaced for the UI. */
+  target: number;
+  /** current − previous-period-average (or 0 if insufficient history). */
+  delta: number;
+  /** Health bucket derived from attainmentRatio thresholds. */
+  status: KpiStatus;
+  /** Most recent snapshot timestamp (ISO) or null. */
+  lastMeasuredAt: string | null;
+  /** True when the most recent snapshot is older than 7 days. */
+  freshnessWarning: boolean;
+  /** Up to 90 days of sampled values, ordered oldest → newest. */
+  history: KpiHistoryPoint[];
+}
+
+const FRESHNESS_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000;
+
+function classifyStatus(attainmentRatio: number): KpiStatus {
+  if (attainmentRatio >= 0.9) return "on-track";
+  if (attainmentRatio >= 0.6) return "at-risk";
+  return "off-track";
+}
+
+export async function getScoreboardWithHistory(
+  companyId: string,
+  options: { since?: Date } = {},
+  db?: Db,
+): Promise<KpiScoreboardRich[]> {
+  const resolved = db ?? (await getDb());
+  const base = await getScoreboard(companyId, resolved);
+  if (base.length === 0) return [];
+
+  const since =
+    options.since ?? new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+  const snapshots = await resolved
+    .select()
+    .from(mcKpiSnapshots)
+    .where(
+      and(
+        eq(mcKpiSnapshots.companyId, companyId),
+        gte(mcKpiSnapshots.measuredAt, since),
+      ),
+    )
+    .orderBy(ascSort(mcKpiSnapshots.measuredAt));
+
+  const byKpi = new Map<string, typeof snapshots>();
+  for (const row of snapshots) {
+    const list = byKpi.get(row.kpiId) ?? [];
+    list.push(row);
+    byKpi.set(row.kpiId, list);
+  }
+
+  return base.map((entry): KpiScoreboardRich => {
+    const history = (byKpi.get(entry.kpiId) ?? []).map((s) => ({
+      at: s.measuredAt.toISOString(),
+      value: s.value,
+    }));
+    const last = history.at(-1);
+    const lastMeasuredAt = last?.at ?? null;
+    const freshnessWarning =
+      lastMeasuredAt !== null &&
+      Date.now() - new Date(lastMeasuredAt).getTime() > FRESHNESS_THRESHOLD_MS;
+    // Delta = current − average of points outside the most recent quarter
+    // (so a single new snapshot lifts the delta, not the whole window).
+    const current = last?.value ?? entry.cumulativeActual;
+    const split = Math.max(0, history.length - Math.ceil(history.length / 4));
+    const priorWindow = history.slice(0, split);
+    const priorAvg =
+      priorWindow.length > 0
+        ? priorWindow.reduce((s, p) => s + p.value, 0) / priorWindow.length
+        : 0;
+    const delta = priorWindow.length > 0 ? current - priorAvg : 0;
+    return {
+      ...entry,
+      current,
+      target: entry.cumulativeEstimated,
+      delta,
+      status: classifyStatus(entry.attainmentRatio),
+      lastMeasuredAt,
+      freshnessWarning,
+      history,
+    };
+  });
+}
+
 /** Convenience export for the scheduler endpoint — fans out a no-op
  *  measurement notice for every due impact (manual_input strategy) so
  *  the stream surfaces the "due now" signal. Real measurement still

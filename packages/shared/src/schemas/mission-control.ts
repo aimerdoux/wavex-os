@@ -159,7 +159,18 @@ export const task = z.object({
   avatarId: z.string().optional(),
   workspaceId: z.string().optional(),
   departmentId: z.string().optional(),
-});
+})
+  // Mission Control v2 invariant: every task must either declare KPI
+  // impacts OR justify why none apply. Tasks with empty impacts AND no
+  // justification are rejected at creation. This is the "why" gate.
+  .refine(
+    (t) => t.expectedKpiImpacts.length > 0 || (t.kpiImpactJustifiedAsNone?.trim().length ?? 0) > 0,
+    {
+      message:
+        "Task must either declare expectedKpiImpacts or provide kpiImpactJustifiedAsNone.",
+      path: ["expectedKpiImpacts"],
+    },
+  );
 
 // ─── Deliverable ────────────────────────────────────────────────────────
 

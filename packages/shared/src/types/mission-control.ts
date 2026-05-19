@@ -441,6 +441,11 @@ export interface ChiefOriginationRule {
   enabled: boolean;
 }
 
+/** Brief-compat alias. The Mission Control v2 spec calls these
+ *  ChiefRule; the existing codebase calls them ChiefOriginationRule.
+ *  Re-export both names so either import works. */
+export type ChiefRule = ChiefOriginationRule;
+
 export type ScopeOfAuthority =
   | { kind: "avatar_roster"; avatarIds: string[] }
   | { kind: "whole_org"; departmentIds: string[] }

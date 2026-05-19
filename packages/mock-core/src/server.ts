@@ -14,6 +14,18 @@
  *   GET  /api/runs/:runId
  */
 
+// Auto-load .env from repo root (Node 20.6+ built-in, no dotenv dep).
+// Lets operators set COMPOSIO_API_KEY + WAVEX_COMPOSIO_DISABLED=0 in
+// `<repo>/.env` and have it picked up across mock-core + every package
+// that calls process.env. Silently no-ops if the file is missing.
+try {
+  const envPath = new URL("../../../.env", import.meta.url);
+  // @ts-expect-error — `loadEnvFile` lands in Node 20.6, available in 25
+  process.loadEnvFile?.(envPath);
+} catch {
+  /* .env not present — fine, env vars stay shell-only */
+}
+
 import Fastify from "fastify";
 import { mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";

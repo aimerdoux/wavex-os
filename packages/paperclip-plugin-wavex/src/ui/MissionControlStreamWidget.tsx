@@ -18,9 +18,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  usePluginAction,
   usePluginData,
-  usePluginStream,
 } from "@paperclipai/plugin-sdk/ui";
 import type {
   PluginBridgeError,
@@ -128,6 +126,67 @@ function severityColor(severity: ActivityEvent["severity"]): string {
   }
 }
 
+/** Phase 6 v2 — importance rank (0..3). Higher = more decision-relevant.
+ *  Drives row dimming and accent border. Built from event kind first,
+ *  severity as tiebreaker. */
+function importanceOf(event: ActivityEvent): 0 | 1 | 2 | 3 {
+  const k = event.kind;
+  // Decisions / state changes the operator must know about.
+  if (
+    k.startsWith("kpi_") ||
+    k.startsWith("chief_") ||
+    k === "task_originated" ||
+    k === "task_completed" ||
+    k === "task_failed" ||
+    k === "deliverable_approved" ||
+    k === "task_rejected"
+  )
+    return 3;
+  if (
+    k === "node_added" ||
+    k === "node_archived" ||
+    k === "node_paused" ||
+    k === "task_assigned" ||
+    k === "deliverable_produced"
+  )
+    return 2;
+  if (event.severity === "critical" || event.severity === "warning") return 3;
+  if (event.severity === "notable") return 2;
+  return 1;
+}
+
+/** Phase 6 v2 — group consecutive events with same (actorNodeId, kind)
+ *  inside a 5-minute window into one "burst" row. The visible list is
+ *  much calmer when an avatar opens 20 sub-tasks in 60s. */
+const BURST_WINDOW_MS = 5 * 60_000;
+
+interface EventGroup {
+  /** Lead event (newest in the group). Used for sentence + timestamps. */
+  lead: ActivityEvent;
+  /** All events in the burst, newest first. >=1. */
+  members: ActivityEvent[];
+}
+
+function groupEvents(events: ActivityEvent[]): EventGroup[] {
+  const groups: EventGroup[] = [];
+  for (const ev of events) {
+    const last = groups[groups.length - 1];
+    if (
+      last &&
+      last.lead.kind === ev.kind &&
+      last.lead.actorNodeId === ev.actorNodeId &&
+      Math.abs(
+        new Date(last.lead.at).getTime() - new Date(ev.at).getTime(),
+      ) < BURST_WINDOW_MS
+    ) {
+      last.members.push(ev);
+    } else {
+      groups.push({ lead: ev, members: [ev] });
+    }
+  }
+  return groups;
+}
+
 function deriveShortIdClient(nodeId: string): string {
   if (nodeId.includes(":")) {
     const tail = nodeId.split(":").pop() ?? nodeId;
@@ -188,31 +247,43 @@ export function MissionControlStreamWidget({ context }: PluginWidgetProps) {
     "mission-control-activity",
     { companyId },
   );
-  const stream = usePluginStream<ActivityEvent>(
-    "mission-control-stream",
-    companyId ? { companyId } : undefined,
-  );
-  const subscribe = usePluginAction("mission-control-stream-subscribe");
-  const unsubscribe = usePluginAction("mission-control-stream-unsubscribe");
-
-  // Tell the worker to start polling wavex for this company. The worker
-  // owns the poll cadence + cursor; the widget just subscribes to the
-  // resulting stream channel above.
+  // Live updates via lightweight client poll. Host SSE bus is optional in
+  // the embed; client-poll keeps the widget self-contained and avoids the
+  // 501 noise when the host omits the stream bus.
+  const stream = { events: [] as ActivityEvent[], connected: Boolean(companyId) };
   useEffect(() => {
     if (!companyId) return;
-    void subscribe({ companyId }).catch(() => {
-      // The widget already shows a "live offline" indicator if the stream
-      // never connects — silent failure here is fine.
-    });
-    return () => {
-      void unsubscribe({ companyId }).catch(() => {});
-    };
-  }, [companyId, subscribe, unsubscribe]);
-  const [windowChoice, setWindowChoice] = useState<WindowChoice>("24h");
-  const [activeGroups, setActiveGroups] = useState<Set<KindGroup>>(
-    new Set(["task", "deliverable", "node", "kpi", "chief", "system"]),
+    const handle = setInterval(() => refresh(), 5000);
+    return () => clearInterval(handle);
+  }, [companyId, refresh]);
+  // Phase 6 v2 — URL-persistent filters. window=24h&kinds=task|kpi&q=ricoma
+  const initialFilters = useMemo(() => readFilterParams(), []);
+  const [windowChoice, setWindowChoice] = useState<WindowChoice>(
+    initialFilters.window ?? "24h",
   );
-  const [query, setQuery] = useState("");
+  const [activeGroups, setActiveGroups] = useState<Set<KindGroup>>(
+    initialFilters.kinds ??
+      new Set(["task", "deliverable", "node", "kpi", "chief", "system"]),
+  );
+  const [query, setQuery] = useState(initialFilters.q ?? "");
+
+  // Persist filter selections back to the URL whenever they change.
+  useEffect(() => {
+    writeFilterParams({ window: windowChoice, kinds: activeGroups, q: query });
+  }, [windowChoice, activeGroups, query]);
+
+  // Phase 6 v2 — "what changed since you left" banner. The sessionStorage
+  // key is per-company; on mount we compare the newest event's id against
+  // it and surface a count + dismiss button. Updated every time the user
+  // clicks "mark all read".
+  const lastSeenKey = companyId
+    ? `mc-stream-last-seen:${companyId}`
+    : "mc-stream-last-seen";
+  const [lastSeenAt, setLastSeenAt] = useState<string | null>(() =>
+    typeof sessionStorage === "undefined"
+      ? null
+      : sessionStorage.getItem(lastSeenKey),
+  );
 
   const ctx = useMemo<RenderContext | null>(
     () => (data ? buildCtx(data) : null),
@@ -242,6 +313,16 @@ export function MissionControlStreamWidget({ context }: PluginWidgetProps) {
       return true;
     });
   }, [data, stream.events, windowChoice, activeGroups, query, ctx]);
+
+  // Phase 6 v2 — count of visible events newer than lastSeenAt.
+  // MUST be called BEFORE any early returns (rules of hooks).
+  const newSinceLastSeen = useMemo(() => {
+    if (!lastSeenAt) return 0;
+    return visibleEvents.filter((e) => e.at > lastSeenAt).length;
+  }, [visibleEvents, lastSeenAt]);
+
+  // Phase 6 v2 — pre-group consecutive events.
+  const groupedEvents = useMemo(() => groupEvents(visibleEvents), [visibleEvents]);
 
   if (!companyId) {
     return (
@@ -287,7 +368,48 @@ export function MissionControlStreamWidget({ context }: PluginWidgetProps) {
         onQuery={setQuery}
         live={stream.connected}
       />
-      {visibleEvents.length === 0 ? (
+      {newSinceLastSeen > 0 ? (
+        <div
+          style={{
+            background: "color-mix(in srgb, #00d4ff 14%, transparent)",
+            border: "1px solid color-mix(in srgb, #00d4ff 35%, transparent)",
+            borderRadius: 4,
+            padding: "6px 10px",
+            marginBottom: 8,
+            fontSize: 12,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <span style={{ color: WAVEX_COLOR }}>●</span>
+          <span style={{ flex: 1 }}>
+            <strong>{newSinceLastSeen}</strong> new event
+            {newSinceLastSeen === 1 ? "" : "s"} since you last viewed.
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              const newest = visibleEvents[0]?.at ?? new Date().toISOString();
+              if (typeof sessionStorage !== "undefined") {
+                sessionStorage.setItem(lastSeenKey, newest);
+              }
+              setLastSeenAt(newest);
+            }}
+            style={{
+              background: "none",
+              border: "none",
+              color: WAVEX_COLOR,
+              cursor: "pointer",
+              fontSize: 12,
+              padding: 0,
+            }}
+          >
+            mark all read
+          </button>
+        </div>
+      ) : null}
+      {groupedEvents.length === 0 ? (
         <div style={{ opacity: 0.7, padding: "12px 0", fontSize: 13 }}>
           {data?.events.length === 0
             ? "No activity yet. Events appear here as agents work."
@@ -303,8 +425,13 @@ export function MissionControlStreamWidget({ context }: PluginWidgetProps) {
             overflowY: "auto",
           }}
         >
-          {visibleEvents.map((event) => (
-            <EventRow key={event.id} event={event} ctx={ctx!} />
+          {groupedEvents.map((g, i) => (
+            <EventRow
+              key={g.lead.id}
+              group={g}
+              ctx={ctx!}
+              defaultExpanded={i === 0}
+            />
           ))}
         </ol>
       )}
@@ -312,24 +439,91 @@ export function MissionControlStreamWidget({ context }: PluginWidgetProps) {
   );
 }
 
+/** Phase 6 v2 — read filter selections from `?mc=` URL param. Format:
+ *  ?mc=window=7d,kinds=task|kpi,q=text — stays human-debuggable. */
+function readFilterParams(): {
+  window?: WindowChoice;
+  kinds?: Set<KindGroup>;
+  q?: string;
+} {
+  if (typeof window === "undefined") return {};
+  const raw = new URLSearchParams(window.location.search).get("mc");
+  if (!raw) return {};
+  const parts = raw.split(",");
+  const out: { window?: WindowChoice; kinds?: Set<KindGroup>; q?: string } = {};
+  for (const part of parts) {
+    const [key, val] = part.split("=");
+    if (!key || val == null) continue;
+    if (key === "window" && ["1h", "24h", "7d", "all"].includes(val)) {
+      out.window = val as WindowChoice;
+    } else if (key === "kinds") {
+      const groups = val
+        .split("|")
+        .filter((g): g is KindGroup =>
+          ["task", "deliverable", "node", "kpi", "chief", "system"].includes(g),
+        );
+      if (groups.length > 0) out.kinds = new Set(groups);
+    } else if (key === "q") {
+      out.q = decodeURIComponent(val);
+    }
+  }
+  return out;
+}
+
+function writeFilterParams(opts: {
+  window: WindowChoice;
+  kinds: Set<KindGroup>;
+  q: string;
+}): void {
+  if (typeof window === "undefined") return;
+  const segments: string[] = [];
+  if (opts.window !== "24h") segments.push(`window=${opts.window}`);
+  if (opts.kinds.size < 6) {
+    segments.push(`kinds=${Array.from(opts.kinds).join("|")}`);
+  }
+  if (opts.q.trim().length > 0) {
+    segments.push(`q=${encodeURIComponent(opts.q.trim())}`);
+  }
+  const search = new URLSearchParams(window.location.search);
+  if (segments.length > 0) search.set("mc", segments.join(","));
+  else search.delete("mc");
+  const next = `${window.location.pathname}${
+    search.toString() ? `?${search.toString()}` : ""
+  }`;
+  window.history.replaceState(null, "", next);
+}
+
 function EventRow({
-  event,
+  group,
   ctx,
+  defaultExpanded,
 }: {
-  event: ActivityEvent;
+  group: EventGroup;
   ctx: RenderContext;
+  defaultExpanded: boolean;
 }) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
+  const event = group.lead;
   const sentence = renderEvent(event, ctx);
   const now = Date.now();
+  const importance = importanceOf(event);
+  const isCollapsed = group.members.length > 1;
+  const rowOpacity = importance >= 2 ? 1 : 0.7;
+  const accentBorder =
+    importance === 3
+      ? `2px solid color-mix(in srgb, ${severityColor(event.severity)} 70%, transparent)`
+      : "none";
   return (
     <li
       style={{
         display: "flex",
         gap: 8,
-        padding: "8px 0",
+        padding: "8px 0 8px 10px",
         borderBottom: "1px solid rgba(255,255,255,0.05)",
+        borderLeft: accentBorder,
         fontSize: 13,
         lineHeight: 1.45,
+        opacity: rowOpacity,
       }}
     >
       <span
@@ -344,7 +538,51 @@ function EventRow({
         }}
       />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ wordBreak: "break-word" }}>{sentence}</div>
+        <div style={{ wordBreak: "break-word" }}>
+          {isCollapsed ? (
+            <>
+              <strong>×{group.members.length}</strong>{" "}
+              <span style={{ opacity: 0.8 }}>{sentence}</span>{" "}
+              <button
+                type="button"
+                onClick={() => setExpanded((v) => !v)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: WAVEX_COLOR,
+                  cursor: "pointer",
+                  fontSize: 11,
+                  padding: 0,
+                  marginLeft: 4,
+                }}
+              >
+                {expanded ? "collapse" : "show all"}
+              </button>
+            </>
+          ) : (
+            sentence
+          )}
+        </div>
+        {isCollapsed && expanded ? (
+          <ul
+            style={{
+              margin: "4px 0 0",
+              padding: "4px 0 0 12px",
+              listStyle: "none",
+              fontSize: 12,
+              opacity: 0.7,
+            }}
+          >
+            {group.members.slice(1).map((m) => (
+              <li key={m.id} style={{ padding: "2px 0" }}>
+                · {renderEvent(m, ctx)}{" "}
+                <span style={{ opacity: 0.6 }}>
+                  ({formatRelative(m.at, now)})
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
         <div
           style={{
             fontSize: 11,

@@ -43,6 +43,13 @@
       "when": 1747000004000,
       "tag": "0008_chief_of_staff",
       "breakpoints": false
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1747000005000,
+      "tag": "0009_kpi_snapshots",
+      "breakpoints": false
     }
   ]
 }

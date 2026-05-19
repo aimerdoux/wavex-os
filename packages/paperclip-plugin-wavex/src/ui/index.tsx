@@ -15,20 +15,35 @@ import type {
   PluginSettingsPageProps,
 } from "@paperclipai/plugin-sdk/ui";
 
-// Mission Control — Phase 1 Stream widget (plain-language activity feed).
-export { MissionControlStreamWidget } from "./MissionControlStreamWidget.js";
-// Mission Control — Phase 2 Deliverables table + inspector drawer.
-export { MissionControlDeliverablesWidget } from "./MissionControlDeliverablesWidget.js";
-// Mission Control — Phase 3 KPI Scoreboard.
-export { MissionControlScoreboardWidget } from "./MissionControlScoreboardWidget.js";
-// Mission Control — Phase 4 Node profile + assignment chain inspector.
-export { MissionControlNodeProfileWidget } from "./MissionControlNodeProfileWidget.js";
-// Mission Control — Phase 5 Accountability Graph (SVG force layout).
-export { MissionControlGraphWidget } from "./MissionControlGraphWidget.js";
-// Mission Control — Phase 6 Chief of Staff config + rules + evaluator.
-export { MissionControlChiefWidget } from "./MissionControlChiefWidget.js";
-// Mission Control — Phase 7 polish (cost / capacity / weekly export).
-export { MissionControlPolishWidget } from "./MissionControlPolishWidget.js";
+// Mission Control v0.7.0 — single unified surface (hero KPIs + activity
+// spine + context rail + ops footer). Replaces the prior 7 separate
+// dashboardWidget exports; their files remain in the repo but are not
+// bundled because nothing re-exports them.
+export { MissionControlUnifiedWidget } from "./MissionControlUnifiedWidget.js";
+// v0.8.0 — Connectors sidebar entry + Directory modal.
+export { ConnectorsSidebarEntry } from "./ConnectorsSidebar.js";
+// v0.9.0 — Full-page Mission Control mounted at the page slot.
+export { MissionControlPage } from "./MissionControlPage.js";
+// v0.9.1 — Sidebar entry that nav-links to the full-page MC route.
+export { MissionControlSidebarEntry } from "./MissionControlSidebarEntry.js";
+// Frontier F1 — Living Headline + Status Orb. Not a slot; mounted inside
+// MissionControlPage and MissionControlUnifiedWidget at the top.
+export { MissionControlHeadlineStrip } from "./MissionControlHeadline.js";
+// Frontier F2 — Decision Queue. Mounted as the first subnav tab in
+// MissionControlPage and as a compact section in the dashboard widget.
+export { MissionControlDecisionQueue } from "./MissionControlDecisionQueue.js";
+// Frontier F3 — Receipts side panel. Opened from Scoreboard rows
+// + HeroKpiStrip cards. Renders the causal chain for a KPI.
+export { ReceiptsPanel } from "./ReceiptsPanel.js";
+// Frontier F4 — Chat-as-nav bar. Mounted at the bottom of MissionControlPage.
+export { ChatNavBar } from "./ChatNavBar.js";
+// Frontier F6 — Accountability Map. Replaces the topology Graph for the
+// "Map" tab in MissionControlPage. Card grid, not topology.
+export { AccountabilityMap } from "./AccountabilityMap.js";
+// v0.9.0 Phase 3 — Deliverable Inspector (modal). Not a slot; opened
+// from within the page when an event/deliverable is clicked. Exported
+// so MissionControlPage can lazily mount it via a portal.
+export { DeliverableInspector } from "./DeliverableInspector.js";
 
 const WAVEX_COLOR = "#00d4ff";
 const WAVEX_BG = "color-mix(in srgb, #00d4ff 6%, transparent)";

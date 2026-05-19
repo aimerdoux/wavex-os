@@ -132,6 +132,112 @@ const plugin = definePlugin({
     });
 
     // -------------------------------------------------------------------
+    // Frontier F1 — Headline (LLM-rendered) + Health Orb (status).
+    // The two surfaces that anchor the top of every MC view.
+    // -------------------------------------------------------------------
+    ctx.data.register("mission-control-headline", async ({ companyId, refresh }) => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      const id = String(companyId ?? "");
+      if (!id) return { ok: false, error: "no-company" };
+      try {
+        const url = `${base}/api/mission-control/${encodeURIComponent(id)}/headline${refresh ? "?refresh=1" : ""}`;
+        const r = await localFetch(url);
+        if (!r.ok) return { ok: false, status: r.status };
+        return await r.json();
+      } catch (err) {
+        return { ok: false, error: String(err) };
+      }
+    });
+
+    ctx.data.register("mission-control-health-orb", async ({ companyId }) => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      const id = String(companyId ?? "");
+      if (!id) return { ok: false, error: "no-company" };
+      try {
+        const r = await localFetch(
+          `${base}/api/mission-control/${encodeURIComponent(id)}/health-orb`,
+        );
+        if (!r.ok) return { ok: false, status: r.status };
+        return await r.json();
+      } catch (err) {
+        return { ok: false, error: String(err) };
+      }
+    });
+
+    ctx.data.register(
+      "mission-control-kpi-receipts",
+      async ({ companyId, kpiId }) => {
+        const cfg = (await ctx.config.get()) as PluginConfig | null;
+        const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+        const id = String(companyId ?? "");
+        const kid = String(kpiId ?? "");
+        if (!id || !kid) return { ok: false, error: "missing companyId or kpiId" };
+        try {
+          const r = await localFetch(
+            `${base}/api/mission-control/${encodeURIComponent(id)}/kpi/${encodeURIComponent(kid)}/receipts`,
+          );
+          if (!r.ok) return { ok: false, status: r.status };
+          return await r.json();
+        } catch (err) {
+          return { ok: false, error: String(err) };
+        }
+      },
+    );
+
+    ctx.data.register(
+      "mission-control-accountability-map",
+      async ({ companyId }) => {
+        const cfg = (await ctx.config.get()) as PluginConfig | null;
+        const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+        const id = String(companyId ?? "");
+        if (!id) return { ok: false, cards: [], total: 0 };
+        try {
+          const r = await localFetch(
+            `${base}/api/mission-control/${encodeURIComponent(id)}/accountability-map`,
+          );
+          if (!r.ok) return { ok: false, cards: [], total: 0, status: r.status };
+          return await r.json();
+        } catch (err) {
+          return { ok: false, cards: [], total: 0, error: String(err) };
+        }
+      },
+    );
+
+    ctx.data.register("mission-control-tab-counts", async ({ companyId }) => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      const id = String(companyId ?? "");
+      if (!id) return { ok: false };
+      try {
+        const r = await localFetch(
+          `${base}/api/mission-control/${encodeURIComponent(id)}/tab-counts`,
+        );
+        if (!r.ok) return { ok: false, status: r.status };
+        return await r.json();
+      } catch (err) {
+        return { ok: false, error: String(err) };
+      }
+    });
+
+    ctx.data.register("mission-control-decision-queue", async ({ companyId }) => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      const id = String(companyId ?? "");
+      if (!id) return { ok: false, items: [], total: 0, error: "no-company" };
+      try {
+        const r = await localFetch(
+          `${base}/api/mission-control/${encodeURIComponent(id)}/decision-queue`,
+        );
+        if (!r.ok) return { ok: false, items: [], total: 0, status: r.status };
+        return await r.json();
+      } catch (err) {
+        return { ok: false, items: [], total: 0, error: String(err) };
+      }
+    });
+
+    // -------------------------------------------------------------------
     // Mission Control — Phase 7 polish (cost/capacity/weekly).
     // -------------------------------------------------------------------
     ctx.data.register("mission-control-cost", async ({ companyId }) => {
@@ -174,6 +280,31 @@ const plugin = definePlugin({
       try {
         const r = await localFetch(
           `${base}/api/mission-control/${encodeURIComponent(id)}/weekly-export`,
+        );
+        if (!r.ok) return { ok: false, status: r.status };
+        return await r.json();
+      } catch (err) {
+        return { ok: false, error: String(err) };
+      }
+    });
+
+    // Frontier F4 — chat-as-nav. Action (not data) because each ask is a
+    // user-initiated mutation-ish call (LLM invocation is billable).
+    ctx.actions.register("mission-control-ask", async ({ companyId, question }) => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      const id = String(companyId ?? "");
+      const q = String(question ?? "").trim();
+      if (!id) return { ok: false, error: "no-company" };
+      if (!q) return { ok: false, error: "question-required" };
+      try {
+        const r = await localFetch(
+          `${base}/api/mission-control/${encodeURIComponent(id)}/ask`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ question: q }),
+          },
         );
         if (!r.ok) return { ok: false, status: r.status };
         return await r.json();
@@ -356,8 +487,451 @@ const plugin = definePlugin({
     });
 
     // -------------------------------------------------------------------
+    // Mission Control · Deliverable inspector (v0.9.0 Phase 3).
+    // Three handlers backing DeliverableInspector.tsx:
+    //   - detail   → GET /deliverable/:id
+    //   - reveal   → POST /deliverable/:id/reveal (OS reveal)
+    //   - review   → POST /deliverable/:id/review (approve/reject)
+    // -------------------------------------------------------------------
+    ctx.data.register(
+      "mission-control-deliverable-detail",
+      async ({ id }) => {
+        const cfg = (await ctx.config.get()) as PluginConfig | null;
+        const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+        const did = String(id ?? "");
+        if (!did) return { ok: false, deliverable: null };
+        try {
+          const r = await localFetch(
+            `${base}/api/mission-control/deliverable/${encodeURIComponent(did)}`,
+          );
+          if (!r.ok) return { ok: false, status: r.status };
+          return await r.json();
+        } catch (err) {
+          return { ok: false, error: String(err) };
+        }
+      },
+    );
+
+    ctx.actions.register(
+      "mission-control-deliverable-reveal",
+      async ({ deliverableId }) => {
+        const cfg = (await ctx.config.get()) as PluginConfig | null;
+        const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+        const did = String(deliverableId ?? "");
+        if (!did) return { ok: false, error: "missing deliverableId" };
+        try {
+          const r = await localFetch(
+            `${base}/api/mission-control/deliverable/${encodeURIComponent(did)}/reveal`,
+            { method: "POST" },
+          );
+          if (!r.ok) return { ok: false, status: r.status };
+          return await r.json();
+        } catch (err) {
+          return { ok: false, error: String(err) };
+        }
+      },
+    );
+
+    ctx.actions.register(
+      "mission-control-deliverable-review",
+      async (params) => {
+        const cfg = (await ctx.config.get()) as PluginConfig | null;
+        const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+        const did = String(params.deliverableId ?? "");
+        if (!did) return { ok: false, error: "missing deliverableId" };
+        try {
+          const r = await localFetch(
+            `${base}/api/mission-control/deliverable/${encodeURIComponent(did)}/review`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                decision: params.decision,
+                notes: params.notes,
+              }),
+            },
+          );
+          if (!r.ok) return { ok: false, status: r.status };
+          return await r.json();
+        } catch (err) {
+          return { ok: false, error: String(err) };
+        }
+      },
+    );
+
+    // -------------------------------------------------------------------
+    // Mission Control · Connectors directory (v0.8.0).
+    //
+    // Three handlers backing the sidebar-triggered directory modal:
+    //   - connectors-catalog   → composio-shim featured list (curated)
+    //   - connectors-connected → vault state per slug (live)
+    //   - connectors-connect   → kicks off OAuth, returns redirectUrl
+    //   - connectors-disconnect → removes vault credentials for one slug
+    // -------------------------------------------------------------------
+    // Setup gating — the Directory modal checks this first and shows
+    // a key-entry screen until Composio is configured + valid.
+    ctx.data.register("connectors-setup-status", async () => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      try {
+        const r = await localFetch(`${base}/api/connectors/setup-status`);
+        if (!r.ok) return { ok: false, configured: false, valid: false, mode: "error" };
+        return await r.json();
+      } catch (err) {
+        return { ok: false, configured: false, valid: false, mode: "error", error: String(err) };
+      }
+    });
+
+    ctx.actions.register("connectors-setup", async (params) => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      const apiKey = String(params.apiKey ?? "").trim();
+      if (!apiKey) return { ok: false, error: "apiKey is required" };
+      try {
+        const r = await localFetch(`${base}/api/connectors/setup`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ apiKey }),
+        });
+        const body = await r.json();
+        if (!r.ok) return { ok: false, status: r.status, error: (body as { error?: string }).error ?? `HTTP ${r.status}` };
+        return body;
+      } catch (err) {
+        return { ok: false, error: String(err) };
+      }
+    });
+
+    ctx.data.register("connectors-catalog", async () => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      try {
+        // /api/connectors/catalog → live Composio toolkits.get({}) with
+        // a 5-min server-side cache, or FEATURED_TOOLKITS fallback when
+        // Composio is disabled. Either way, the response shape is the
+        // same: { rows: Array<{slug, name, logo?, description?, category?}> }
+        const r = await localFetch(`${base}/api/connectors/catalog`);
+        if (r.ok) {
+          const body = (await r.json()) as {
+            ok?: boolean;
+            rows?: Array<{
+              slug: string;
+              name: string;
+              logo?: string;
+              description?: string;
+              category?: string;
+            }>;
+            source?: "composio" | "curated";
+          };
+          return {
+            ok: body.ok !== false,
+            source: body.source ?? "unknown",
+            toolkits: (body.rows ?? []).map((r) => ({
+              slug: r.slug,
+              displayName: r.name,
+              category: r.category ?? "other",
+              logoUrl: r.logo,
+              description: r.description,
+            })),
+          };
+        }
+      } catch {
+        // fall through to empty fallback
+      }
+      return { ok: false, source: "error", toolkits: [] };
+    });
+
+    ctx.data.register("connectors-connected", async ({ companyId }) => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      const id = String(companyId ?? "");
+      if (!id) return { ok: false, rows: [], source: "no-company" };
+      try {
+        const r = await localFetch(
+          `${base}/api/connectors/${encodeURIComponent(id)}/connected`,
+        );
+        if (!r.ok)
+          return { ok: false, rows: [], source: "wavex-api-error", status: r.status };
+        return await r.json();
+      } catch (err) {
+        return { ok: false, rows: [], source: "exception", error: String(err) };
+      }
+    });
+
+    ctx.actions.register("connectors-connect", async (params) => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      const id = String(params.companyId ?? "");
+      const slug = String(params.slug ?? "");
+      if (!id || !slug) return { ok: false, error: "missing companyId or slug" };
+      try {
+        const r = await localFetch(
+          `${base}/op-omega/onboarding/connectors/oauth/initiate`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              companyId: id,
+              toolkitSlug: slug,
+              avatarId: params.avatarId ?? null,
+            }),
+          },
+        );
+        if (!r.ok) return { ok: false, status: r.status, error: `HTTP ${r.status}` };
+        // composio-shim/initOAuth returns `{ url, pendingConnectionId,
+        // needsLiveWiring? }` — NOT `redirectUrl`. needsLiveWiring is
+        // truthy when WAVEX_COMPOSIO_DISABLED=1 (default in dev) or when
+        // the hub session can't be obtained.
+        const body = (await r.json()) as {
+          url?: string | null;
+          pendingConnectionId?: string | null;
+          needsLiveWiring?: boolean;
+        };
+        if (body.needsLiveWiring || !body.url) {
+          return {
+            ok: false,
+            needsLiveWiring: true,
+            error: "Composio is disabled. Set COMPOSIO_API_KEY + WAVEX_COMPOSIO_DISABLED=0 to enable live OAuth.",
+          };
+        }
+        return {
+          ok: true,
+          redirectUrl: body.url,
+          pendingConnectionId: body.pendingConnectionId ?? null,
+        };
+      } catch (err) {
+        return { ok: false, error: String(err) };
+      }
+    });
+
+    ctx.actions.register("connectors-disconnect", async (params) => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      const id = String(params.companyId ?? "");
+      const slug = String(params.slug ?? "");
+      if (!id || !slug) return { ok: false, error: "missing companyId or slug" };
+      try {
+        const r = await localFetch(
+          `${base}/api/connectors/${encodeURIComponent(id)}/${encodeURIComponent(slug)}`,
+          { method: "DELETE" },
+        );
+        if (!r.ok) return { ok: false, status: r.status };
+        return await r.json();
+      } catch (err) {
+        return { ok: false, error: String(err) };
+      }
+    });
+
+    // -------------------------------------------------------------------
+    // Mission Control v2 — Phase 7 Cost Attribution.
+    // -------------------------------------------------------------------
+    ctx.data.register("mission-control-cost-per-kpi", async ({ companyId }) => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      const id = String(companyId ?? "");
+      if (!id) return { ok: false, rows: [], source: "no-company" };
+      try {
+        const r = await localFetch(
+          `${base}/api/mission-control/${encodeURIComponent(id)}/cost-per-kpi`,
+        );
+        if (!r.ok)
+          return { ok: false, rows: [], source: "wavex-api-error", status: r.status };
+        return await r.json();
+      } catch (err) {
+        return { ok: false, rows: [], source: "exception", error: String(err) };
+      }
+    });
+
+    ctx.data.register("mission-control-capacity-heatmap", async ({ companyId }) => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      const id = String(companyId ?? "");
+      if (!id)
+        return { ok: false, nodes: [], hours: [], cells: [], source: "no-company" };
+      try {
+        const r = await localFetch(
+          `${base}/api/mission-control/${encodeURIComponent(id)}/capacity-heatmap`,
+        );
+        if (!r.ok)
+          return {
+            ok: false,
+            nodes: [],
+            hours: [],
+            cells: [],
+            source: "wavex-api-error",
+            status: r.status,
+          };
+        return await r.json();
+      } catch (err) {
+        return {
+          ok: false,
+          nodes: [],
+          hours: [],
+          cells: [],
+          source: "exception",
+          error: String(err),
+        };
+      }
+    });
+
+    ctx.data.register("mission-control-burn-rate", async ({ companyId }) => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      const id = String(companyId ?? "");
+      if (!id)
+        return {
+          ok: false,
+          daily: [],
+          projectedRunwayDays: null,
+          dailyBudgetUSD: null,
+          source: "no-company",
+        };
+      try {
+        const r = await localFetch(
+          `${base}/api/mission-control/${encodeURIComponent(id)}/burn-rate`,
+        );
+        if (!r.ok)
+          return {
+            ok: false,
+            daily: [],
+            projectedRunwayDays: null,
+            dailyBudgetUSD: null,
+            source: "wavex-api-error",
+            status: r.status,
+          };
+        return await r.json();
+      } catch (err) {
+        return {
+          ok: false,
+          daily: [],
+          projectedRunwayDays: null,
+          dailyBudgetUSD: null,
+          source: "exception",
+          error: String(err),
+        };
+      }
+    });
+
+    // -------------------------------------------------------------------
+    // Mission Control v2 — Phase 3 Causal Impact graph.
+    //
+    // Two endpoints feeding the new ImpactGraph widget:
+    //  - `impact-summary` (one call) → top-KPIs + top-work + orphans + calibration
+    //  - `impact-graph` (per-KPI drilldown) → task chain for that KPI
+    // -------------------------------------------------------------------
+    ctx.data.register(
+      "mission-control-impact-summary",
+      async ({ companyId }) => {
+        const cfg = (await ctx.config.get()) as PluginConfig | null;
+        const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+        const id = String(companyId ?? "");
+        if (!id) {
+          return {
+            ok: false,
+            topKpisByForecast: [],
+            topWorkForHeadline: [],
+            orphanWork: [],
+            ownerCalibration: [],
+            source: "no-company",
+          };
+        }
+        try {
+          const r = await localFetch(
+            `${base}/api/mission-control/${encodeURIComponent(id)}/impact-summary`,
+          );
+          if (!r.ok) {
+            return {
+              ok: false,
+              topKpisByForecast: [],
+              topWorkForHeadline: [],
+              orphanWork: [],
+              ownerCalibration: [],
+              source: "wavex-api-error",
+              status: r.status,
+            };
+          }
+          return await r.json();
+        } catch (err) {
+          return {
+            ok: false,
+            topKpisByForecast: [],
+            topWorkForHeadline: [],
+            orphanWork: [],
+            ownerCalibration: [],
+            source: "exception",
+            error: String(err),
+          };
+        }
+      },
+    );
+
+    ctx.data.register(
+      "mission-control-impact-graph",
+      async ({ companyId, kpiId }) => {
+        const cfg = (await ctx.config.get()) as PluginConfig | null;
+        const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+        const id = String(companyId ?? "");
+        const k = String(kpiId ?? "");
+        if (!id || !k) {
+          return { ok: false, nodes: [], source: "no-target" };
+        }
+        try {
+          const r = await localFetch(
+            `${base}/api/mission-control/${encodeURIComponent(id)}/kpi/${encodeURIComponent(k)}/impact-graph`,
+          );
+          if (!r.ok) {
+            return {
+              ok: false,
+              nodes: [],
+              source: "wavex-api-error",
+              status: r.status,
+            };
+          }
+          return await r.json();
+        } catch (err) {
+          return {
+            ok: false,
+            nodes: [],
+            source: "exception",
+            error: String(err),
+          };
+        }
+      },
+    );
+
+    // -------------------------------------------------------------------
     // Mission Control — KPI scoreboard. Backs the Phase 3 widget.
     // -------------------------------------------------------------------
+    // Phase 2 v2 — rich scoreboard with history + status + freshness.
+    ctx.data.register("mission-control-scoreboard-rich", async ({ companyId }) => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      const id = String(companyId ?? "");
+      if (!id) return { ok: false, scoreboard: [], source: "no-company" };
+      try {
+        const r = await localFetch(
+          `${base}/api/mission-control/${encodeURIComponent(id)}/scoreboard-rich`,
+        );
+        if (!r.ok) return { ok: false, scoreboard: [], source: "wavex-api-error", status: r.status };
+        return await r.json();
+      } catch (err) {
+        return { ok: false, scoreboard: [], source: "exception", error: String(err) };
+      }
+    });
+
+    // Phase 2 v2 — sample-now: writes one snapshot row per KPI.
+    ctx.actions.register("mission-control-sample-kpis", async ({ companyId }) => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      const id = String(companyId ?? "");
+      if (!id) return { ok: false, sampled: 0 };
+      const r = await localFetch(
+        `${base}/api/mission-control/${encodeURIComponent(id)}/sample-kpis`,
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" },
+      );
+      if (!r.ok) return { ok: false, sampled: 0, status: r.status };
+      return await r.json();
+    });
+
     ctx.data.register("mission-control-scoreboard", async ({ companyId }) => {
       const cfg = (await ctx.config.get()) as PluginConfig | null;
       const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;

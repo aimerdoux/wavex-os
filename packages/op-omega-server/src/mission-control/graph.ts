@@ -17,9 +17,17 @@
  */
 
 import { and, eq, gte, lte } from "drizzle-orm";
-import { type Db, assignmentLinks, getDb } from "@wavex-os/db";
+import {
+  type Db,
+  assignmentLinks,
+  deliverables,
+  expectedKpiImpacts,
+  getDb,
+} from "@wavex-os/db";
 import type { PaperclipMode, ScopeNode } from "@wavex-os/shared/types/mission-control";
 import { getScopeTreeCached } from "./scope-tree-cache.js";
+
+export type NodeHealth = "healthy" | "at-risk" | "critical";
 
 export interface GraphNode {
   id: string;
@@ -29,6 +37,15 @@ export interface GraphNode {
   parentId?: string;
   /** Total inbound + outbound work links in the window. */
   activityCount: number;
+  /** Phase 4 v2 — derived from deliverable backlog + assignment backlog +
+   *  inherited from descendants. */
+  health: NodeHealth;
+  /** True when this node has >=3 in_review deliverables. */
+  isBottleneck: boolean;
+  /** Open deliverables (status in: draft, in_review). */
+  openDeliverables: number;
+  /** Open assignment links (toNodeId === this node, no completion mirror). */
+  openAssignments: number;
 }
 
 export interface GraphEdge {
@@ -75,7 +92,23 @@ export async function buildAccountabilityGraph(
   const since = input.since ?? new Date(Date.now() - DEFAULT_WINDOW_MS);
   const until = input.until ?? new Date();
 
-  const rows = await resolved
+  // KPI lens: compute eligible taskRefIds first so we can filter
+  // assignment links in a single pass below.
+  let lensTaskIds: Set<string> | null = null;
+  if (input.kpiId) {
+    const impactRows = await resolved
+      .select({ taskRefId: expectedKpiImpacts.taskRefId })
+      .from(expectedKpiImpacts)
+      .where(
+        and(
+          eq(expectedKpiImpacts.companyId, input.companyId),
+          eq(expectedKpiImpacts.kpiId, input.kpiId),
+        ),
+      );
+    lensTaskIds = new Set(impactRows.map((r) => r.taskRefId));
+  }
+
+  const allRows = await resolved
     .select()
     .from(assignmentLinks)
     .where(
@@ -85,6 +118,9 @@ export async function buildAccountabilityGraph(
         lte(assignmentLinks.at, until),
       ),
     );
+  const rows = lensTaskIds
+    ? allRows.filter((r) => lensTaskIds!.has(r.taskRefId ?? ""))
+    : allRows;
 
   const weightByPair = new Map<string, { weight: number; lastAt: Date }>();
   const activityByNode = new Map<string, number>();
@@ -104,12 +140,97 @@ export async function buildAccountabilityGraph(
     activityByNode.set(to, (activityByNode.get(to) ?? 0) + 1);
   }
 
+  // -------------------------------------------------------------------
+  // Phase 4 v2 — health propagation + bottleneck detection.
+  //
+  // Per-node health derived from:
+  //   - open deliverables (draft + in_review)
+  //   - open assignments inbound (toNodeId === id, no later completion)
+  //   - inherited worst-case from descendants
+  //
+  // Thresholds (intentionally simple — refine if false-positives appear):
+  //   bottleneck: >=3 in_review deliverables
+  //   critical : openAssignments > 15 OR open deliverables > 10
+  //   at-risk  : openAssignments > 5 OR open deliverables > 3
+  //   healthy : else
+  // -------------------------------------------------------------------
+  const deliverableRows = await resolved
+    .select({
+      producedByNodeId: deliverables.producedByNodeId,
+      status: deliverables.status,
+    })
+    .from(deliverables)
+    .where(eq(deliverables.companyId, input.companyId));
+
+  const openDelByNode = new Map<string, number>();
+  const inReviewByNode = new Map<string, number>();
+  for (const r of deliverableRows) {
+    if (r.status === "draft" || r.status === "in_review") {
+      openDelByNode.set(
+        r.producedByNodeId,
+        (openDelByNode.get(r.producedByNodeId) ?? 0) + 1,
+      );
+    }
+    if (r.status === "in_review") {
+      inReviewByNode.set(
+        r.producedByNodeId,
+        (inReviewByNode.get(r.producedByNodeId) ?? 0) + 1,
+      );
+    }
+  }
+
+  const openAssignByNode = new Map<string, number>();
+  for (const row of rows) {
+    if (!row.toNodeId) continue;
+    openAssignByNode.set(
+      row.toNodeId,
+      (openAssignByNode.get(row.toNodeId) ?? 0) + 1,
+    );
+  }
+
+  const ownHealth = (nodeId: string): NodeHealth => {
+    const od = openDelByNode.get(nodeId) ?? 0;
+    const oa = openAssignByNode.get(nodeId) ?? 0;
+    if (oa > 15 || od > 10) return "critical";
+    if (oa > 5 || od > 3) return "at-risk";
+    return "healthy";
+  };
+
+  const childrenOf = new Map<string, string[]>();
+  for (const n of tree.nodes) {
+    if (n.parentId) {
+      const cur = childrenOf.get(n.parentId) ?? [];
+      cur.push(n.id);
+      childrenOf.set(n.parentId, cur);
+    }
+  }
+
+  const healthCache = new Map<string, NodeHealth>();
+  const worstOf = (a: NodeHealth, b: NodeHealth): NodeHealth => {
+    const rank = { healthy: 0, "at-risk": 1, critical: 2 } as const;
+    return rank[a] >= rank[b] ? a : b;
+  };
+  const resolveHealth = (nodeId: string): NodeHealth => {
+    const cached = healthCache.get(nodeId);
+    if (cached) return cached;
+    let h = ownHealth(nodeId);
+    for (const child of childrenOf.get(nodeId) ?? []) {
+      h = worstOf(h, resolveHealth(child));
+    }
+    healthCache.set(nodeId, h);
+    return h;
+  };
+
   const nodes: GraphNode[] = tree.nodes.map((n) => ({
     id: n.id,
     name: n.name,
     kind: n.kind,
     parentId: n.parentId,
     activityCount: activityByNode.get(n.id) ?? 0,
+    health: resolveHealth(n.id),
+    isBottleneck: (inReviewByNode.get(n.id) ?? 0) >= 3,
+    openDeliverables: openDelByNode.get(n.id) ?? 0,
+    openAssignments: openAssignByNode.get(n.id) ?? 0,
   }));
 
   const workEdges: GraphEdge[] = Array.from(weightByPair.entries()).map(

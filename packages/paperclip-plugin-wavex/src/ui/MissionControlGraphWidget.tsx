@@ -30,6 +30,10 @@ interface GraphNode {
   kind: string;
   parentId?: string;
   activityCount: number;
+  health?: "healthy" | "at-risk" | "critical";
+  isBottleneck?: boolean;
+  openDeliverables?: number;
+  openAssignments?: number;
 }
 interface GraphEdge {
   fromNodeId: string;
@@ -61,16 +65,45 @@ const WINDOW_MS: Record<WindowChoice, number> = {
   "30d": 30 * 24 * 60 * 60 * 1000,
 };
 
+interface ScopeTreeNode {
+  id: string;
+  name: string;
+}
+interface ScopeTreeResponse {
+  ok: boolean;
+  tree?: { kpis?: Array<{ id: string; name: string }> };
+}
+
 export function MissionControlGraphWidget({ context }: PluginWidgetProps) {
   const companyId = context.companyId ?? "";
   const [windowChoice, setWindowChoice] = useState<WindowChoice>("7d");
-  const since = useMemo(
-    () => new Date(Date.now() - WINDOW_MS[windowChoice]).toISOString(),
-    [windowChoice],
+  const [layoutMode, setLayoutMode] = useState<"auto" | "tree">("auto");
+  const [heatmap, setHeatmap] = useState(false);
+  const [kpiLens, setKpiLens] = useState<string>("");
+  // Time scrubber: how many days back the window ends. 0 = "now",
+  // 30 = "30 days ago". Lets the user replay past graph state.
+  const [endOffsetDays, setEndOffsetDays] = useState(0);
+
+  const { since, until } = useMemo(() => {
+    const endMs = Date.now() - endOffsetDays * 24 * 60 * 60 * 1000;
+    const startMs = endMs - WINDOW_MS[windowChoice];
+    return {
+      since: new Date(startMs).toISOString(),
+      until: new Date(endMs).toISOString(),
+    };
+  }, [windowChoice, endOffsetDays]);
+
+  // KPI dropdown options come from scope-tree (same source the rest of
+  // Mission Control uses — keeps labels consistent).
+  const treeData = usePluginData<ScopeTreeResponse>(
+    "mission-control-scope-tree",
+    { companyId },
   );
+  const kpiOptions = treeData.data?.tree?.kpis ?? [];
+
   const { data, loading, error, refresh } = usePluginData<GraphResponse>(
     "mission-control-graph",
-    { companyId, since },
+    { companyId, since, until, kpiId: kpiLens || undefined },
   );
 
   if (!companyId) {
@@ -121,6 +154,47 @@ export function MissionControlGraphWidget({ context }: PluginWidgetProps) {
             </option>
           ))}
         </select>
+        <select
+          value={layoutMode}
+          onChange={(e) => setLayoutMode(e.target.value as "auto" | "tree")}
+          style={selectStyle}
+          title="Layout mode"
+        >
+          <option value="auto">Auto layout</option>
+          <option value="tree">Tree</option>
+        </select>
+        {kpiOptions.length > 0 ? (
+          <select
+            value={kpiLens}
+            onChange={(e) => setKpiLens(e.target.value)}
+            style={selectStyle}
+            title="Filter by KPI"
+          >
+            <option value="">All KPIs</option>
+            {kpiOptions.map((k) => (
+              <option key={k.id} value={k.id}>
+                {k.name}
+              </option>
+            ))}
+          </select>
+        ) : null}
+        <label
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+            fontSize: 12,
+            opacity: 0.85,
+            cursor: "pointer",
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={heatmap}
+            onChange={(e) => setHeatmap(e.target.checked)}
+          />
+          Heatmap
+        </label>
         <span style={{ fontSize: 12, opacity: 0.65 }}>
           {graph?.nodes.length ?? 0} nodes ·{" "}
           {graph?.totalWorkEvents ?? 0} work events ·{" "}
@@ -134,19 +208,83 @@ export function MissionControlGraphWidget({ context }: PluginWidgetProps) {
           refresh
         </button>
       </div>
+
+      {/* Time scrubber — drag to replay graph state in the past */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          marginBottom: 8,
+          fontSize: 11,
+          color: "rgba(255,255,255,0.6)",
+        }}
+      >
+        <span style={{ minWidth: 70 }}>
+          {endOffsetDays === 0 ? "Now" : `−${endOffsetDays}d`}
+        </span>
+        <input
+          type="range"
+          min={0}
+          max={30}
+          step={1}
+          value={endOffsetDays}
+          onChange={(e) => setEndOffsetDays(Number(e.target.value))}
+          aria-label="Time scrubber"
+          style={{ flex: 1, accentColor: WAVEX_COLOR }}
+        />
+        <span style={{ minWidth: 70, textAlign: "right" }}>
+          {new Date(until).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+        </span>
+        {endOffsetDays > 0 ? (
+          <button
+            type="button"
+            onClick={() => setEndOffsetDays(0)}
+            style={{ ...linkStyle, fontSize: 11 }}
+          >
+            reset
+          </button>
+        ) : null}
+      </div>
+
       {!graph || graph.nodes.length === 0 ? (
         <div style={{ opacity: 0.7, padding: "8px 0", fontSize: 13 }}>
-          No nodes in the scope tree yet.
+          {kpiLens
+            ? "No work edges for this KPI lens in the window."
+            : "No nodes in the scope tree yet."}
         </div>
       ) : (
-        <GraphSvg graph={graph} />
+        <GraphSvg graph={graph} heatmap={heatmap} layoutMode={layoutMode} />
       )}
+      <HealthLegend />
+      {graph && graph.nodes.some((n) => n.isBottleneck) ? (
+        <div
+          style={{
+            marginTop: 6,
+            fontSize: 11,
+            color: "#ff6b6b",
+            opacity: 0.8,
+          }}
+        >
+          ⚠ {graph.nodes.filter((n) => n.isBottleneck).length} bottleneck
+          {graph.nodes.filter((n) => n.isBottleneck).length === 1 ? "" : "s"}{" "}
+          detected (≥3 in-review deliverables)
+        </div>
+      ) : null}
     </Card>
   );
 }
 
-function GraphSvg({ graph }: { graph: AccountabilityGraph }) {
-  const layout = useForceLayout(graph);
+function GraphSvg({
+  graph,
+  heatmap,
+  layoutMode,
+}: {
+  graph: AccountabilityGraph;
+  heatmap: boolean;
+  layoutMode: "auto" | "tree";
+}) {
+  const layout = useForceLayout(graph, layoutMode);
   const maxActivity = Math.max(1, ...graph.nodes.map((n) => n.activityCount));
   const maxWeight = Math.max(1, ...graph.workEdges.map((e) => e.weight));
   return (
@@ -209,6 +347,8 @@ function GraphSvg({ graph }: { graph: AccountabilityGraph }) {
             x={pos.x}
             y={pos.y}
             size={baseSize}
+            heatmap={heatmap}
+            heatIntensity={n.activityCount / maxActivity}
           />
         );
       })}
@@ -221,13 +361,17 @@ function NodeShape({
   x,
   y,
   size,
+  heatmap,
+  heatIntensity,
 }: {
   node: GraphNode;
   x: number;
   y: number;
   size: number;
+  heatmap: boolean;
+  heatIntensity: number;
 }) {
-  const fill =
+  const kindFill =
     node.kind === "chief_of_staff"
       ? "#ffd166"
       : node.kind === "human_member" || node.kind === "user"
@@ -235,42 +379,100 @@ function NodeShape({
         : node.kind === "department" || node.kind === "org" || node.kind === "workspace"
           ? "#8a8f98"
           : WAVEX_COLOR;
+  // Heatmap fills use a temperature ramp instead of node-kind color so
+  // load imbalance jumps out visually. Cool = lavender, hot = magenta.
+  const heatFill = `hsl(${280 - Math.round(heatIntensity * 280)}, 80%, 55%)`;
+  const fill = heatmap ? heatFill : kindFill;
+
+  const healthStroke =
+    node.health === "critical"
+      ? "#ff4d4f"
+      : node.health === "at-risk"
+        ? "#ffaa00"
+        : node.health === "healthy"
+          ? "#4ade80"
+          : "rgba(255,255,255,0.15)";
+  const strokeWidth = node.health && node.health !== "healthy" ? 2 : 1;
+
   const labelOffsetY = size + 12;
   const isCircle = node.kind === "human_member" || node.kind === "user";
   const isDiamond = node.kind === "chief_of_staff";
   const isRoundRect =
     node.kind === "department" || node.kind === "org" || node.kind === "workspace";
+
+  const shape = isCircle ? (
+    <circle
+      r={size / 2}
+      fill={fill}
+      opacity={0.85}
+      stroke={healthStroke}
+      strokeWidth={strokeWidth}
+    />
+  ) : isDiamond ? (
+    <polygon
+      points={`0,${-size / 2} ${size / 2},0 0,${size / 2} ${-size / 2},0`}
+      fill={fill}
+      opacity={0.85}
+      stroke={healthStroke}
+      strokeWidth={strokeWidth}
+    />
+  ) : isRoundRect ? (
+    <rect
+      x={-size / 2}
+      y={-size / 2}
+      width={size}
+      height={size}
+      rx={4}
+      ry={4}
+      fill={fill}
+      opacity={0.85}
+      stroke={healthStroke}
+      strokeWidth={strokeWidth}
+    />
+  ) : (
+    <rect
+      x={-size / 2}
+      y={-size / 2}
+      width={size}
+      height={size}
+      fill={fill}
+      opacity={0.85}
+      stroke={healthStroke}
+      strokeWidth={strokeWidth}
+    />
+  );
+
+  const tooltip =
+    node.openDeliverables != null
+      ? `${node.name}\nopen deliverables: ${node.openDeliverables}\nopen assignments: ${node.openAssignments ?? 0}\nhealth: ${node.health ?? "?"}`
+      : node.name;
+
   return (
     <g transform={`translate(${x},${y})`}>
-      {isCircle ? (
-        <circle r={size / 2} fill={fill} opacity={0.85} />
-      ) : isDiamond ? (
-        <polygon
-          points={`0,${-size / 2} ${size / 2},0 0,${size / 2} ${-size / 2},0`}
-          fill={fill}
-          opacity={0.85}
-        />
-      ) : isRoundRect ? (
-        <rect
-          x={-size / 2}
-          y={-size / 2}
-          width={size}
-          height={size}
-          rx={4}
-          ry={4}
-          fill={fill}
-          opacity={0.85}
-        />
-      ) : (
-        <rect
-          x={-size / 2}
-          y={-size / 2}
-          width={size}
-          height={size}
-          fill={fill}
-          opacity={0.85}
-        />
-      )}
+      <title>{tooltip}</title>
+      {node.isBottleneck ? (
+        <circle
+          r={size / 2 + 6}
+          fill="none"
+          stroke="#ff4d4f"
+          strokeWidth={1.5}
+          opacity={0.55}
+        >
+          <animate
+            attributeName="r"
+            values={`${size / 2 + 4};${size / 2 + 9};${size / 2 + 4}`}
+            dur="2s"
+            repeatCount="indefinite"
+          />
+          <animate
+            attributeName="opacity"
+            values="0.6;0.15;0.6"
+            dur="2s"
+            repeatCount="indefinite"
+          />
+        </circle>
+      ) : null}
+      {shape}
       <text
         x={0}
         y={labelOffsetY}
@@ -284,6 +486,51 @@ function NodeShape({
   );
 }
 
+function HealthLegend() {
+  return (
+    <div
+      style={{
+        display: "flex",
+        gap: 10,
+        marginTop: 6,
+        fontSize: 10,
+        opacity: 0.65,
+        flexWrap: "wrap",
+      }}
+    >
+      <LegendSwatch color="#4ade80" label="healthy" />
+      <LegendSwatch color="#ffaa00" label="at-risk" />
+      <LegendSwatch color="#ff4d4f" label="critical" />
+      <LegendSwatch color="#ff4d4f" label="● bottleneck" outlined />
+    </div>
+  );
+}
+function LegendSwatch({
+  color,
+  label,
+  outlined,
+}: {
+  color: string;
+  label: string;
+  outlined?: boolean;
+}) {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+      <span
+        style={{
+          width: 10,
+          height: 10,
+          borderRadius: 2,
+          background: outlined ? "transparent" : color,
+          border: `1px solid ${color}`,
+          display: "inline-block",
+        }}
+      />
+      {label}
+    </span>
+  );
+}
+
 interface LayoutResult {
   positions: Map<string, { x: number; y: number }>;
   width: number;
@@ -294,11 +541,17 @@ interface LayoutResult {
 // tree parentIds) → place each depth on a horizontal band, spread by
 // index. Not a full physics sim but predictable + good enough for the
 // 35-agent demo + handles up to ~100 nodes legibly.
-function useForceLayout(graph: AccountabilityGraph): LayoutResult {
+function useForceLayout(
+  graph: AccountabilityGraph,
+  layoutMode: "auto" | "tree",
+): LayoutResult {
   return useMemo(() => {
     const width = 720;
-    const height = 320;
+    // Tree mode renders taller to make depth bands more legible.
+    const useTree = layoutMode === "tree" || graph.nodes.length >= 30;
+    const height = useTree ? 460 : 320;
     const padding = 30;
+    void useTree;
     const childrenByParent = new Map<string, string[]>();
     for (const n of graph.nodes) {
       if (n.parentId) {
@@ -348,7 +601,7 @@ function useForceLayout(graph: AccountabilityGraph): LayoutResult {
       });
     }
     return { positions, width, height };
-  }, [graph]);
+  }, [graph, layoutMode]);
 }
 
 function Card({

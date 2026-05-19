@@ -26,6 +26,11 @@ import { route as tierRoute } from "@op-omega/plugin-tier-router";
 import { assertBoard, assertCompanyAccess, AuthError } from "@wavex-os/auth-shim";
 import { loadPillarResponses } from "@op-omega/plugin-onboarding";
 import { getOnboardingDir } from "../state-bridge.js";
+import {
+  buildChiefContext,
+  renderChiefContextBlock,
+  rewriteSlashCommand,
+} from "../mission-control/chief-context.js";
 import { withTokenAccounting } from "../lib/token-accounting.js";
 import { BudgetExhaustedError } from "../lib/token-budget.js";
 
@@ -284,18 +289,41 @@ export function registerHelpChatRoute(app: FastifyInstance): void {
       field: parsed.data.field,
     });
 
+    // Phase 5 v2 — slash-command pre-processor for board mode.
+    // /briefing /anomalies /orphans get rewritten into longer canonical
+    // prompts before T2 sees them.
+    const operatorMessage =
+      mode === "board"
+        ? (rewriteSlashCommand(parsed.data.message) ?? parsed.data.message)
+        : parsed.data.message;
+
     let assistantText: string;
     try {
+      // Phase 5 v2 — inject Mission Control state into board prompts.
+      // The Chief AI lives ONLY in the Kernel chat (per user spec); no
+      // widget surface. Built every request: cheap (one scoreboard read +
+      // one graph read + one event scan) and keeps the answer grounded
+      // in current state instead of a snapshot from N minutes ago.
+      const chiefBlock =
+        mode === "board"
+          ? await buildChiefContext(companyId)
+              .then(renderChiefContextBlock)
+              .catch(() => "")
+          : "";
+      const fleetContextBase =
+        mode === "board" ? await summarizeBoardContext(companyId) : "";
       const fullPrompt = mode === "board"
         ? buildBoardPrompt({
-            message: parsed.data.message,
+            message: operatorMessage,
             companyName: companyId,
-            fleetContext: await summarizeBoardContext(companyId),
+            fleetContext: chiefBlock
+              ? `${chiefBlock}\n\n${fleetContextBase}`
+              : fleetContextBase,
             currentPath: parsed.data.currentPath,
             history: chat.messages.slice(0, -1),
           })
         : buildPrompt({
-            message: parsed.data.message,
+            message: operatorMessage,
             phase: parsed.data.phase,
             field: parsed.data.field,
             pillarContext: await summarizePillars(companyId),
