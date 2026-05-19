@@ -1,0 +1,28 @@
+Subject: Welcome to WaveX — you're in as a design partner
+
+Hi [Name],
+
+Excited to have [Company] on board as a WaveX design partner.
+
+Here's what the next few days look like:
+
+  - Today: I'll get you dashboard access and send a quick Loom walking you through
+    what we'll do together over the next 30 days.
+  - Day 3–5: We'll do your first smoke-test run together — just 15 minutes,
+    I'll lead so you can see exactly what WaveX surfaces.
+  - Week 1: 30-min call to review your first results and lock in your baseline metrics.
+
+A few quick things to confirm:
+
+  1. Preferred channel for async updates? (Slack / Email / Loom)
+  2. Sync or async for onboarding? (I can do either — no preference is fine too.)
+  3. Your timezone, so I can book the right slots.
+
+Pilot terms: $1k/mo ($299 design-partner rate), 90-day term. If you have questions
+on terms before your first run, reply here or book a quick call:
+  cal.com/wavex/design-partner
+
+Looking forward to it — let's ship fewer bugs.
+
+Tony Stark
+Founder, WaveX
