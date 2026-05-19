@@ -48,7 +48,7 @@ Examples: `feat/pillar-6-form`, `fix/port-collision`, `docs/contributing-guide`
 | `apps/installer/` | `npx wavex-os init` CLI |
 | `packages/agent-templates/` | Curated role templates plus `_registry.json` |
 | `packages/auth-shim/` | Auth boundary gates (`assertBoard`, `assertCompanyAccess`) via `WAVEX_AUTH_MODE` |
-| `packages/claude-code-proxy/` | Local Anthropic-compatible proxy bridged through Supabase Realtime |
+| `packages/claude-code-proxy/` | **Deprecated** (2026-05-15) — local Anthropic-compatible proxy. Customer-side now spawns local `claude` directly; do not extend. |
 | `packages/cloud-client/` | Cloud API + Realtime client for device link/token + inference routing |
 | `packages/composio-shim/` | Composio onboarding surface (`listConnections`, toolkits, key validation) |
 | `packages/core/` | Paperclip vendored via git subtree (don't modify directly - see below) |
