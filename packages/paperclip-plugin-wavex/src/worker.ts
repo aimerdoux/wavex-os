@@ -21,6 +21,7 @@ interface PluginConfig {
 }
 
 const DEFAULT_WAVEX_BASE = "http://127.0.0.1:3101";
+const PAPERCLIP_BASE = "http://127.0.0.1:3100";
 
 /** Plain Node `fetch`, deliberately NOT routed through `ctx.http.fetch`.
  *
@@ -33,6 +34,48 @@ const DEFAULT_WAVEX_BASE = "http://127.0.0.1:3101";
  *  vendored Paperclip core's general-purpose SSRF protection. */
 const localFetch: typeof globalThis.fetch = (input, init) =>
   globalThis.fetch(input, init);
+
+/** Translate a Paperclip company UUID into the wavex slug that
+ *  wavex-os-server keys on (the `~/.wavex-os/instances/<slug>/` dir name).
+ *
+ *  All wavex-os-server endpoints index by slug. The plugin context gives
+ *  us paperclip's UUID. Without this translation every localFetch ends
+ *  up calling loadCompanyManifest(<uuid>) which silently returns nothing,
+ *  so the dashboard surfaces show "0 agents / not incepted" even when
+ *  the actual fleet has 35 active agents.
+ *
+ *  Strategy: ask paperclip for the company by UUID; its `name` is stored
+ *  as `wavex-os/<slug>` (set at finalize-bridge time). Strip the prefix.
+ *  Cache in-process forever — the mapping is immutable after finalize.
+ *  Falls back to the raw input on lookup failure (e.g. partial wiring
+ *  in tests) so degraded behavior is the same as before this change. */
+const slugCache = new Map<string, string>();
+async function resolveWavexSlug(companyId: string): Promise<string> {
+  if (!companyId) return "";
+  const cached = slugCache.get(companyId);
+  if (cached !== undefined) return cached;
+  // Non-UUID input is already a slug (tests, direct curl, etc.).
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(companyId)) {
+    slugCache.set(companyId, companyId);
+    return companyId;
+  }
+  try {
+    const r = await localFetch(`${PAPERCLIP_BASE}/api/companies/${encodeURIComponent(companyId)}`);
+    if (!r.ok) return companyId;
+    const company = (await r.json()) as { name?: string };
+    const slug = (company.name ?? "").replace(/^wavex-os\//, "");
+    if (slug && slug !== company.name) {
+      slugCache.set(companyId, slug);
+      return slug;
+    }
+  } catch {
+    /* fall through to passthrough */
+  }
+  // Mapping not found / not a wavex company — pass through so paperclip-
+  // only callers (if any creep in later) still work.
+  slugCache.set(companyId, companyId);
+  return companyId;
+}
 
 const plugin = definePlugin({
   async setup(ctx) {
@@ -47,7 +90,7 @@ const plugin = definePlugin({
     ctx.data.register("mission-control-activity", async ({ companyId }) => {
       const cfg = (await ctx.config.get()) as PluginConfig | null;
       const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
-      const id = String(companyId ?? "");
+      const id = await resolveWavexSlug(String(companyId ?? ""));
       if (!id) {
         return {
           ok: false,
@@ -115,7 +158,7 @@ const plugin = definePlugin({
     ctx.data.register("mission-control-scope-tree", async ({ companyId }) => {
       const cfg = (await ctx.config.get()) as PluginConfig | null;
       const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
-      const id = String(companyId ?? "");
+      const id = await resolveWavexSlug(String(companyId ?? ""));
       if (!id) return { ok: false, tree: null, source: "no-company" };
       try {
         const r = await localFetch(
@@ -138,7 +181,7 @@ const plugin = definePlugin({
     ctx.data.register("mission-control-headline", async ({ companyId, refresh }) => {
       const cfg = (await ctx.config.get()) as PluginConfig | null;
       const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
-      const id = String(companyId ?? "");
+      const id = await resolveWavexSlug(String(companyId ?? ""));
       if (!id) return { ok: false, error: "no-company" };
       try {
         const url = `${base}/api/mission-control/${encodeURIComponent(id)}/headline${refresh ? "?refresh=1" : ""}`;
@@ -153,7 +196,7 @@ const plugin = definePlugin({
     ctx.data.register("mission-control-health-orb", async ({ companyId }) => {
       const cfg = (await ctx.config.get()) as PluginConfig | null;
       const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
-      const id = String(companyId ?? "");
+      const id = await resolveWavexSlug(String(companyId ?? ""));
       if (!id) return { ok: false, error: "no-company" };
       try {
         const r = await localFetch(
@@ -171,7 +214,7 @@ const plugin = definePlugin({
       async ({ companyId, kpiId }) => {
         const cfg = (await ctx.config.get()) as PluginConfig | null;
         const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
-        const id = String(companyId ?? "");
+        const id = await resolveWavexSlug(String(companyId ?? ""));
         const kid = String(kpiId ?? "");
         if (!id || !kid) return { ok: false, error: "missing companyId or kpiId" };
         try {
@@ -191,7 +234,7 @@ const plugin = definePlugin({
       async ({ companyId }) => {
         const cfg = (await ctx.config.get()) as PluginConfig | null;
         const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
-        const id = String(companyId ?? "");
+        const id = await resolveWavexSlug(String(companyId ?? ""));
         if (!id) return { ok: false, cards: [], total: 0 };
         try {
           const r = await localFetch(
@@ -208,7 +251,7 @@ const plugin = definePlugin({
     ctx.data.register("mission-control-tab-counts", async ({ companyId }) => {
       const cfg = (await ctx.config.get()) as PluginConfig | null;
       const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
-      const id = String(companyId ?? "");
+      const id = await resolveWavexSlug(String(companyId ?? ""));
       if (!id) return { ok: false };
       try {
         const r = await localFetch(
@@ -224,7 +267,7 @@ const plugin = definePlugin({
     ctx.data.register("mission-control-decision-queue", async ({ companyId }) => {
       const cfg = (await ctx.config.get()) as PluginConfig | null;
       const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
-      const id = String(companyId ?? "");
+      const id = await resolveWavexSlug(String(companyId ?? ""));
       if (!id) return { ok: false, items: [], total: 0, error: "no-company" };
       try {
         const r = await localFetch(
@@ -243,7 +286,7 @@ const plugin = definePlugin({
     ctx.data.register("mission-control-cost", async ({ companyId }) => {
       const cfg = (await ctx.config.get()) as PluginConfig | null;
       const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
-      const id = String(companyId ?? "");
+      const id = await resolveWavexSlug(String(companyId ?? ""));
       if (!id) return { ok: false, totals: { costUSD: 0, events: 0 }, byNode: [] };
       try {
         const r = await localFetch(
@@ -259,7 +302,7 @@ const plugin = definePlugin({
     ctx.data.register("mission-control-capacity", async ({ companyId }) => {
       const cfg = (await ctx.config.get()) as PluginConfig | null;
       const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
-      const id = String(companyId ?? "");
+      const id = await resolveWavexSlug(String(companyId ?? ""));
       if (!id) return { ok: false, rows: [], avg: 0, max: 0 };
       try {
         const r = await localFetch(
@@ -275,7 +318,7 @@ const plugin = definePlugin({
     ctx.data.register("mission-control-weekly-export", async ({ companyId }) => {
       const cfg = (await ctx.config.get()) as PluginConfig | null;
       const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
-      const id = String(companyId ?? "");
+      const id = await resolveWavexSlug(String(companyId ?? ""));
       if (!id) return { ok: false };
       try {
         const r = await localFetch(
@@ -293,7 +336,7 @@ const plugin = definePlugin({
     ctx.actions.register("mission-control-ask", async ({ companyId, question }) => {
       const cfg = (await ctx.config.get()) as PluginConfig | null;
       const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
-      const id = String(companyId ?? "");
+      const id = await resolveWavexSlug(String(companyId ?? ""));
       const q = String(question ?? "").trim();
       if (!id) return { ok: false, error: "no-company" };
       if (!q) return { ok: false, error: "question-required" };
@@ -316,7 +359,7 @@ const plugin = definePlugin({
     ctx.actions.register("mission-control-weekly-export-csv", async ({ companyId }) => {
       const cfg = (await ctx.config.get()) as PluginConfig | null;
       const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
-      const id = String(companyId ?? "");
+      const id = await resolveWavexSlug(String(companyId ?? ""));
       if (!id) return { ok: false, csv: "" };
       try {
         const r = await localFetch(
@@ -336,7 +379,7 @@ const plugin = definePlugin({
     ctx.data.register("mission-control-chief", async ({ companyId }) => {
       const cfg = (await ctx.config.get()) as PluginConfig | null;
       const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
-      const id = String(companyId ?? "");
+      const id = await resolveWavexSlug(String(companyId ?? ""));
       if (!id) return { ok: false, config: null, source: "no-company" };
       try {
         const r = await localFetch(
@@ -423,7 +466,7 @@ const plugin = definePlugin({
     ctx.data.register("mission-control-graph", async ({ companyId, since, until }) => {
       const cfg = (await ctx.config.get()) as PluginConfig | null;
       const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
-      const id = String(companyId ?? "");
+      const id = await resolveWavexSlug(String(companyId ?? ""));
       if (!id) return { ok: false, graph: null, source: "no-company" };
       const params = new URLSearchParams();
       if (typeof since === "string") params.set("since", since);
@@ -448,7 +491,7 @@ const plugin = definePlugin({
     ctx.data.register("mission-control-node-open-assignments", async ({ companyId, nodeId }) => {
       const cfg = (await ctx.config.get()) as PluginConfig | null;
       const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
-      const id = String(companyId ?? "");
+      const id = await resolveWavexSlug(String(companyId ?? ""));
       const n = String(nodeId ?? "");
       if (!id || !n) return { ok: false, open: [], source: "no-target" };
       try {
@@ -466,7 +509,7 @@ const plugin = definePlugin({
     ctx.data.register("mission-control-task-chain", async ({ companyId, taskRefId }) => {
       const cfg = (await ctx.config.get()) as PluginConfig | null;
       const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
-      const id = String(companyId ?? "");
+      const id = await resolveWavexSlug(String(companyId ?? ""));
       const t = String(taskRefId ?? "");
       if (!id || !t) return { ok: false, chain: [], currentOwner: null, source: "no-target" };
       try {
@@ -634,6 +677,22 @@ const plugin = definePlugin({
       }
     });
 
+    // Operator-side Pool B usage roll-up — drives the life bar at the
+    // top of the Pool B Health widget. Tokens + cost + request counts
+    // over 24h / 7d / 30d windows.
+    ctx.data.register("pool-b-health-operator-quota", async (params) => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      const fresh = params?.fresh ? "?fresh=1" : "";
+      try {
+        const r = await localFetch(`${base}/api/pool-b-health/operator-quota${fresh}`);
+        if (!r.ok) return { ok: false, status: r.status, status_data: null };
+        return await r.json();
+      } catch (err) {
+        return { ok: false, error: String(err), status_data: null };
+      }
+    });
+
     // -------------------------------------------------------------------
     // Mission Control · Connectors directory (v0.8.0).
     //
@@ -718,7 +777,7 @@ const plugin = definePlugin({
     ctx.data.register("connectors-connected", async ({ companyId }) => {
       const cfg = (await ctx.config.get()) as PluginConfig | null;
       const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
-      const id = String(companyId ?? "");
+      const id = await resolveWavexSlug(String(companyId ?? ""));
       if (!id) return { ok: false, rows: [], source: "no-company" };
       try {
         const r = await localFetch(
@@ -802,7 +861,7 @@ const plugin = definePlugin({
     ctx.data.register("mission-control-cost-per-kpi", async ({ companyId }) => {
       const cfg = (await ctx.config.get()) as PluginConfig | null;
       const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
-      const id = String(companyId ?? "");
+      const id = await resolveWavexSlug(String(companyId ?? ""));
       if (!id) return { ok: false, rows: [], source: "no-company" };
       try {
         const r = await localFetch(
@@ -819,7 +878,7 @@ const plugin = definePlugin({
     ctx.data.register("mission-control-capacity-heatmap", async ({ companyId }) => {
       const cfg = (await ctx.config.get()) as PluginConfig | null;
       const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
-      const id = String(companyId ?? "");
+      const id = await resolveWavexSlug(String(companyId ?? ""));
       if (!id)
         return { ok: false, nodes: [], hours: [], cells: [], source: "no-company" };
       try {
@@ -851,7 +910,7 @@ const plugin = definePlugin({
     ctx.data.register("mission-control-burn-rate", async ({ companyId }) => {
       const cfg = (await ctx.config.get()) as PluginConfig | null;
       const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
-      const id = String(companyId ?? "");
+      const id = await resolveWavexSlug(String(companyId ?? ""));
       if (!id)
         return {
           ok: false,
@@ -898,7 +957,7 @@ const plugin = definePlugin({
       async ({ companyId }) => {
         const cfg = (await ctx.config.get()) as PluginConfig | null;
         const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
-        const id = String(companyId ?? "");
+        const id = await resolveWavexSlug(String(companyId ?? ""));
         if (!id) {
           return {
             ok: false,
@@ -944,7 +1003,7 @@ const plugin = definePlugin({
       async ({ companyId, kpiId }) => {
         const cfg = (await ctx.config.get()) as PluginConfig | null;
         const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
-        const id = String(companyId ?? "");
+        const id = await resolveWavexSlug(String(companyId ?? ""));
         const k = String(kpiId ?? "");
         if (!id || !k) {
           return { ok: false, nodes: [], source: "no-target" };
@@ -980,7 +1039,7 @@ const plugin = definePlugin({
     ctx.data.register("mission-control-scoreboard-rich", async ({ companyId }) => {
       const cfg = (await ctx.config.get()) as PluginConfig | null;
       const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
-      const id = String(companyId ?? "");
+      const id = await resolveWavexSlug(String(companyId ?? ""));
       if (!id) return { ok: false, scoreboard: [], source: "no-company" };
       try {
         const r = await localFetch(
@@ -997,7 +1056,7 @@ const plugin = definePlugin({
     ctx.actions.register("mission-control-sample-kpis", async ({ companyId }) => {
       const cfg = (await ctx.config.get()) as PluginConfig | null;
       const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
-      const id = String(companyId ?? "");
+      const id = await resolveWavexSlug(String(companyId ?? ""));
       if (!id) return { ok: false, sampled: 0 };
       const r = await localFetch(
         `${base}/api/mission-control/${encodeURIComponent(id)}/sample-kpis`,
@@ -1010,7 +1069,7 @@ const plugin = definePlugin({
     ctx.data.register("mission-control-scoreboard", async ({ companyId }) => {
       const cfg = (await ctx.config.get()) as PluginConfig | null;
       const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
-      const id = String(companyId ?? "");
+      const id = await resolveWavexSlug(String(companyId ?? ""));
       if (!id) return { ok: false, scoreboard: [], due: [], source: "no-company" };
       try {
         const r = await localFetch(
@@ -1042,7 +1101,7 @@ const plugin = definePlugin({
       async ({ companyId }) => {
         const cfg = (await ctx.config.get()) as PluginConfig | null;
         const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
-        const id = String(companyId ?? "");
+        const id = await resolveWavexSlug(String(companyId ?? ""));
         if (!id) return { ok: false, error: "missing companyId" };
         try {
           const r = await localFetch(
@@ -1067,7 +1126,7 @@ const plugin = definePlugin({
     ctx.data.register("mission-control-deliverables", async ({ companyId, kind, taskRefId, status, limit }) => {
       const cfg = (await ctx.config.get()) as PluginConfig | null;
       const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
-      const id = String(companyId ?? "");
+      const id = await resolveWavexSlug(String(companyId ?? ""));
       if (!id) {
         return { ok: false, deliverables: [], source: "no-company" };
       }
@@ -1113,7 +1172,7 @@ const plugin = definePlugin({
     ctx.actions.register(
       "mission-control-stream-subscribe",
       async ({ companyId }) => {
-        const id = String(companyId ?? "");
+        const id = await resolveWavexSlug(String(companyId ?? ""));
         if (!id) return { ok: false, error: "missing companyId" };
         if (streamPollers.has(id)) {
           return { ok: true, alreadyRunning: true };
@@ -1156,7 +1215,7 @@ const plugin = definePlugin({
     ctx.actions.register(
       "mission-control-stream-unsubscribe",
       async ({ companyId }) => {
-        const id = String(companyId ?? "");
+        const id = await resolveWavexSlug(String(companyId ?? ""));
         const handle = streamPollers.get(id);
         if (handle) {
           clearInterval(handle);
@@ -1174,9 +1233,10 @@ const plugin = definePlugin({
     ctx.data.register("inception-status", async ({ companyId }) => {
       const cfg = (await ctx.config.get()) as PluginConfig | null;
       const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      const id = await resolveWavexSlug(String(companyId ?? ""));
       try {
         const r = await localFetch(
-          `${base}/api/companies/${encodeURIComponent(String(companyId))}/agents`,
+          `${base}/api/companies/${encodeURIComponent(id)}/agents`,
         );
         if (!r.ok) {
           return {

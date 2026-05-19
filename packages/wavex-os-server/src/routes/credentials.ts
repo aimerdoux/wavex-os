@@ -395,12 +395,21 @@ export function registerCredentialRoutes(app: FastifyInstance): void {
     const hasKey = Boolean((process.env.COMPOSIO_API_KEY ?? "").trim());
     const disabled = (process.env.WAVEX_COMPOSIO_DISABLED ?? "").toLowerCase();
     const isDisabled = disabled === "1" || disabled === "true" || disabled === "yes";
+    // WaveX-managed mode: the operator runs WaveX-as-a-service and provides
+    // a Composio key server-side; customers (paperclip end users) never see
+    // the setup modal because they don't manage Composio themselves —
+    // they're billed for it via their wavex_os subscription tier instead.
+    // Same `configured + valid` end state, but `managed: true` so the UI
+    // can render "Managed by WaveX" instead of the key-entry form.
+    const managedRaw = (process.env.WAVEX_COMPOSIO_MANAGED ?? "").toLowerCase();
+    const managed = managedRaw === "1" || managedRaw === "true" || managedRaw === "yes";
     const configured = hasKey && !isDisabled;
     if (!configured) {
       return reply.send({
         ok: true,
         configured: false,
         valid: false,
+        managed,
         mode: hasKey ? "disabled" : "missing-key",
       });
     }
@@ -412,6 +421,7 @@ export function registerCredentialRoutes(app: FastifyInstance): void {
           ok: true,
           configured: true,
           valid: false,
+          managed,
           mode: "key-rejected",
           lastError: "Composio rejected the key — getClient returned null.",
         });
@@ -420,6 +430,7 @@ export function registerCredentialRoutes(app: FastifyInstance): void {
         ok: true,
         configured: true,
         valid: true,
+        managed,
         mode: "live",
         toolkitCount: rows.length,
       });
@@ -428,6 +439,7 @@ export function registerCredentialRoutes(app: FastifyInstance): void {
         ok: true,
         configured: true,
         valid: false,
+        managed,
         mode: "validation-error",
         lastError: err instanceof Error ? err.message : String(err),
       });

@@ -55,6 +55,18 @@ interface DailySpendRow {
   errors: number;
   rate_limited: number;
 }
+interface OperatorQuotaStatus {
+  tokens_used_24h: number;
+  tokens_used_7d: number;
+  tokens_used_30d: number;
+  cost_usd_24h: number;
+  cost_usd_7d: number;
+  cost_usd_30d: number;
+  requests_24h: number;
+  requests_7d: number;
+  last_inference_at: string | null;
+}
+
 interface InstallFunnelSummary {
   pairings_initiated_24h: number;
   pairings_claimed_24h: number;
@@ -89,6 +101,25 @@ export function PoolBHealthWidget(_props: PluginWidgetProps) {
   const pairings = usePluginData<{ ok: boolean; rows: PendingPairingRow[] }>("pool-b-health-pairings", params);
   const spend   = usePluginData<{ ok: boolean; rows: DailySpendRow[] }>(    "pool-b-health-spend",    { ...params, days: 14 });
   const funnel  = usePluginData<{ ok: boolean; summary: InstallFunnelSummary | null }>("pool-b-health-funnel", params);
+  const quota   = usePluginData<{ ok: boolean; status: OperatorQuotaStatus | null }>(  "pool-b-health-operator-quota", params);
+
+  // Throttle slider — operator's preferred max requests/min through Pool
+  // B. Persisted in localStorage for now; a follow-up PR will sync this
+  // to the inference-server so requests above the cap get queued/rejected
+  // instead of hammering the operator's Claude Max plan. Default 60 ≈
+  // "unlimited for now", min 1 (one inference every 60s).
+  const THROTTLE_KEY = "wavex_pool_b_throttle_rpm";
+  const [throttleRpm, setThrottleRpm] = useState<number>(() => {
+    try {
+      const stored = window.localStorage.getItem(THROTTLE_KEY);
+      const n = stored ? parseInt(stored, 10) : 60;
+      return Number.isFinite(n) && n >= 1 && n <= 120 ? n : 60;
+    } catch { return 60; }
+  });
+  useEffect(() => {
+    try { window.localStorage.setItem(THROTTLE_KEY, String(throttleRpm)); }
+    catch { /* private mode */ }
+  }, [throttleRpm]);
 
   // Auto-refresh every 30s aligned with server cache TTL.
   useEffect(() => {
@@ -144,6 +175,56 @@ export function PoolBHealthWidget(_props: PluginWidgetProps) {
           hint={`${summary?.devices_ever_active ?? 0} ever`}
         />
       </div>
+
+      {/* Inference life bar — operator's Pool B usage over 24h / 7d / 30d.
+          No hard cap is enforced server-side yet; the bar is a glance
+          check before kicking off big customer flows. */}
+      <Section title="Inference life · operator-side">
+        {quota.loading && !quota.data && <Empty>Loading quota…</Empty>}
+        {quota.data?.status && (
+          <>
+            <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>
+              {quota.data.status.requests_24h.toLocaleString()} req · {quota.data.status.tokens_used_24h.toLocaleString()} tok · ${quota.data.status.cost_usd_24h.toFixed(2)} <span style={{ opacity: 0.55 }}>· last 24h</span>
+            </div>
+            {/* Life bar — capped visually at $5/day default ramp so the
+                bar moves with normal use. Operator can read the absolute
+                $ + tok numbers above the bar; the bar itself is just a
+                visceral signal of "am I burning fast today?". */}
+            <LifeBar valueUsd={quota.data.status.cost_usd_24h} softCapUsd={5} />
+            <div style={{ fontSize: 11, opacity: 0.55, marginTop: 6, display: "flex", justifyContent: "space-between" }}>
+              <span>7d: ${quota.data.status.cost_usd_7d.toFixed(2)} · {quota.data.status.tokens_used_7d.toLocaleString()} tok · {quota.data.status.requests_7d.toLocaleString()} req</span>
+              <span>30d: ${quota.data.status.cost_usd_30d.toFixed(2)}</span>
+            </div>
+          </>
+        )}
+
+        {/* Throttle slider — persisted in localStorage. Server-side
+            enforcement lands in a follow-up PR. */}
+        <div style={{ marginTop: 12, padding: "8px 10px", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 6 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+            <span style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", opacity: 0.55 }}>
+              Throttle · max req/min
+            </span>
+            <span style={{ fontSize: 14, fontWeight: 600, color: WAVEX_COLOR }}>
+              {throttleRpm}
+            </span>
+          </div>
+          <input
+            type="range"
+            min={1}
+            max={120}
+            step={1}
+            value={throttleRpm}
+            onChange={(e) => setThrottleRpm(parseInt(e.target.value, 10))}
+            style={{ width: "100%" }}
+            aria-label="Pool B max requests per minute"
+          />
+          <div style={{ fontSize: 10, opacity: 0.5, marginTop: 4 }}>
+            Saved locally. Enforcement (queue/reject above cap) ships in a
+            follow-up — for now this is a planning surface.
+          </div>
+        </div>
+      </Section>
 
       {/* Devices */}
       <Section title="Devices">
@@ -262,4 +343,31 @@ function Row({ children, dense }: { children: React.ReactNode; dense?: boolean }
 
 function Empty({ children }: { children: React.ReactNode }) {
   return <div style={{ opacity: 0.5, fontStyle: "italic", padding: "4px 0", fontSize: 12 }}>{children}</div>;
+}
+
+/** Horizontal usage gauge. Fills proportionally to `valueUsd / softCapUsd`
+ *  and colors itself green/yellow/red based on the ratio. Caps the
+ *  visible fill at 100% but the numeric value (rendered separately) tells
+ *  the truth if usage > cap. */
+function LifeBar({ valueUsd, softCapUsd }: { valueUsd: number; softCapUsd: number }) {
+  const ratio = softCapUsd > 0 ? Math.min(valueUsd / softCapUsd, 1.0) : 0;
+  const overCap = softCapUsd > 0 && valueUsd > softCapUsd;
+  const color =
+    overCap ? DANGER_COLOR :
+    ratio > 0.75 ? WARN_COLOR :
+    GOOD_COLOR;
+  return (
+    <div style={{
+      width: "100%", height: 8, borderRadius: 4,
+      background: "rgba(255,255,255,0.08)", overflow: "hidden",
+      border: overCap ? `1px solid ${DANGER_COLOR}` : "none",
+    }}>
+      <div style={{
+        width: `${Math.max(ratio * 100, valueUsd > 0 ? 2 : 0)}%`,
+        height: "100%",
+        background: color,
+        transition: "width 0.3s ease, background 0.3s ease",
+      }} />
+    </div>
+  );
 }
