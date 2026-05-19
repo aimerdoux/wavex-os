@@ -1,0 +1,1495 @@
+{
+  "schema_version": "1.0",
+  "org_id": "tony-apple-qa",
+  "finalized_at": "2026-05-17T17:15:35.799Z",
+  "phase_timings": {
+    "finalize_ms": 58
+  },
+  "pillar_responses": {
+    "schema_version": "1.0",
+    "started_at": "2026-05-17T17:07:01.746Z",
+    "completed_at": "2026-05-17T17:14:53.737Z",
+    "pillar_1": {
+      "org_name": "tony-apple-qa",
+      "company_context": "Tony Apple QA Studio is a B2B SaaS that gives mobile-app teams automated QA + smoke-test infrastructure for iOS and Android apps. Tony Stark — currently a QA Engineer at Apple — is the solo founder, building this on the side. We have a working product but no paying customers yet (pre-revenue, building toward design partners). Go-to-market is hybrid: sales-led outreach for enterprise mobile teams, plus marketing-led / PLG content for individual developers. Today the team uses GitHub for issue tracking, Linear for project management, and Slack for internal comms. Notification channel preference: Telegram.",
+      "enrichment_status": "manual_capture",
+      "has_product": true,
+      "industry_hint": "dev_tools",
+      "business_model_hint": "subscription",
+      "ideal_customer_profile": "enterprise ops teams",
+      "revenue_model": "subscription",
+      "competitive_position": "emerging",
+      "primary_acquisition_channel": "content seo",
+      "product_maturity_signal": "ga",
+      "tone_signal": "enterprise",
+      "primary_friction_hypothesis": "friction point not clearly specified — infer from GTM stage",
+      "differentiator_hypothesis": "Tony Apple QA Studio is a B2B SaaS that gives mobile-app teams automated QA + smoke-test infrastructure for iOS and Android apps",
+      "raw_input": "no product yet",
+      "enriched_at": "2026-05-17T17:13:10.247Z"
+    },
+    "pillar_2": {
+      "claude_code_verified": true,
+      "claude_plan": "max_20x",
+      "claude_version": "wavex-os hosted (Pool A)",
+      "inference_budget_profile": "conservative",
+      "verified_at": "2026-05-17T17:07:06.593Z"
+    },
+    "pillar_3": {
+      "product_state": "built_not_selling",
+      "stage": "pre_product",
+      "kpi_snapshot_initial": {
+        "t": "2026-05-17T17:14:38.803Z",
+        "mrr": 0,
+        "nrr": 1,
+        "grr": 1,
+        "cac": 0,
+        "cac_payback_months": 0,
+        "burn_multiple": 0,
+        "activation_rate": 0,
+        "sales_cycle_days": 0,
+        "win_rate": 0,
+        "ltv_cac_ratio": 0,
+        "pipeline_velocity": 0,
+        "narrative_strength": 0.4,
+        "ai_estimated": true
+      }
+    },
+    "pillar_4": {
+      "lead_sources": [
+        "content_seo",
+        "outbound_cold",
+        "product_led_viral"
+      ],
+      "lead_source": "content_seo",
+      "sales_motion": "assisted_demo",
+      "gtm_profile_enum": "CONTENT_LED_PLG"
+    },
+    "pillar_5": {
+      "comm_channel": "telegram"
+    }
+  },
+  "connector_manifest": {
+    "schema_version": "1.0",
+    "generated_at": "2026-05-17T17:15:23.157Z",
+    "generated_by": "T0 · decision-matrix-fallback",
+    "based_on": {
+      "pillar_responses_hash": "sha256:63a674502cb4ab2e2aa65bbece2d4c6de3c2f336b7a7bed2f148482a48526e51"
+    },
+    "required": [
+      {
+        "id": "claude-code",
+        "priority": "P-1",
+        "rationale": "Inference bootstrap — verified during Pillar 2.",
+        "status": "configured"
+      },
+      {
+        "id": "github",
+        "priority": "P1",
+        "rationale": "Code-ship → activation correlation. cpo watches merges/deploys; cdo joins ship events to activation cohorts.",
+        "status": "pending_credential"
+      },
+      {
+        "id": "telegram",
+        "priority": "P0",
+        "rationale": "Pillar 5 — Board chose Telegram for CEO→operator notifications.",
+        "status": "pending_credential",
+        "dry_run": false
+      }
+    ],
+    "suggested": [
+      {
+        "id": "supabase",
+        "priority": "P0",
+        "rationale": "Product exists but not yet monetized — Supabase is the right place to stand up the event store before product→revenue kicks in.",
+        "status": "pending_decision",
+        "dry_run": true
+      },
+      {
+        "id": "mixpanel",
+        "priority": "P1",
+        "rationale": "Outbound-led — mixpanel for post-demo activation tracking. cro.demo + cdo.telemetry watch trial conversion after sales-led onboarding.",
+        "status": "pending_decision"
+      }
+    ],
+    "deferred": [
+      {
+        "id": "posthog",
+        "priority": "P2",
+        "rationale": "Dev tools — PostHog self-hosted for product analytics. Dev-native telemetry that complements GitHub activity signals.",
+        "status": "pending_decision"
+      }
+    ],
+    "blocked_on_manual_approval": [],
+    "dry_run_expires_at": "2026-05-31T17:15:23.157Z"
+  },
+  "swarm_manifest": {
+    "schema_version": "1.0",
+    "generated_at": "2026-05-17T17:15:29.976Z",
+    "generated_by": "T0 · decision-matrix-fallback",
+    "based_on": {
+      "pillar_responses_hash": "sha256:63a674502cb4ab2e2aa65bbece2d4c6de3c2f336b7a7bed2f148482a48526e51",
+      "connector_manifest_hash": "sha256:1a325912c35ec3edd391e466f742bace60fd64d5db9f234984b8dcd1198f9b4f"
+    },
+    "topology": {
+      "total_base_roster": 34,
+      "active_count": 25,
+      "standby_count": 0,
+      "parked_count": 8,
+      "disabled_count": 1
+    },
+    "agents": {
+      "ceo.orchestrator": {
+        "status": "active",
+        "adapter": "claude-code",
+        "heartbeat": "15m",
+        "budget_monthly_usd": 300,
+        "skill_overlay": null,
+        "department": "ceo",
+        "level": "L·II",
+        "reports_to": null,
+        "spawnable": false
+      },
+      "cpo": {
+        "status": "active",
+        "adapter": "claude-code",
+        "heartbeat": "1h",
+        "budget_monthly_usd": 120,
+        "skill_overlay": null,
+        "department": "product",
+        "level": "L·III",
+        "reports_to": "ceo.orchestrator",
+        "spawnable": false
+      },
+      "cmo": {
+        "status": "active",
+        "adapter": "claude-code",
+        "heartbeat": "1h",
+        "budget_monthly_usd": 120,
+        "skill_overlay": null,
+        "department": "marketing",
+        "level": "L·III",
+        "reports_to": "ceo.orchestrator",
+        "spawnable": false
+      },
+      "cro": {
+        "status": "active",
+        "adapter": "claude-code",
+        "heartbeat": "1h",
+        "budget_monthly_usd": 120,
+        "skill_overlay": null,
+        "department": "revenue",
+        "level": "L·III",
+        "reports_to": "ceo.orchestrator",
+        "spawnable": false
+      },
+      "cfo": {
+        "status": "parked",
+        "adapter": "claude-code",
+        "heartbeat": "1h",
+        "budget_monthly_usd": 120,
+        "skill_overlay": null,
+        "department": "finance",
+        "level": "L·III",
+        "reports_to": "ceo.orchestrator",
+        "spawnable": false,
+        "unpark_condition": "operator_unpark_from_mission_control",
+        "reason": "outside requested scope (marketing, revenue, product)"
+      },
+      "cdo": {
+        "status": "parked",
+        "adapter": "claude-code",
+        "heartbeat": "1h",
+        "budget_monthly_usd": 120,
+        "skill_overlay": null,
+        "department": "data",
+        "level": "L·III",
+        "reports_to": "ceo.orchestrator",
+        "spawnable": false,
+        "unpark_condition": "operator_unpark_from_mission_control",
+        "reason": "outside requested scope (marketing, revenue, product)"
+      },
+      "coo": {
+        "status": "parked",
+        "adapter": "claude-code",
+        "heartbeat": "1h",
+        "budget_monthly_usd": 120,
+        "skill_overlay": null,
+        "department": "ops",
+        "level": "L·III",
+        "reports_to": "ceo.orchestrator",
+        "spawnable": false,
+        "unpark_condition": "operator_unpark_from_mission_control",
+        "reason": "outside requested scope (marketing, revenue, product)"
+      },
+      "cpo.build": {
+        "status": "active",
+        "adapter": "claude-code",
+        "heartbeat": "2h",
+        "budget_monthly_usd": 80,
+        "skill_overlay": "dev_tools_industry: code velocity IS the product — build cadence gates activation",
+        "department": "product",
+        "level": "L·IV",
+        "reports_to": "cpo",
+        "spawnable": true
+      },
+      "cpo.qa": {
+        "status": "parked",
+        "adapter": "claude-code",
+        "heartbeat": "4h",
+        "budget_monthly_usd": 60,
+        "skill_overlay": null,
+        "department": "product",
+        "level": "L·IV",
+        "reports_to": "cpo",
+        "spawnable": false,
+        "unpark_condition": "First paying customer (product_state=live_paying_customers)"
+      },
+      "cpo.roadmap": {
+        "status": "active",
+        "adapter": "claude-code",
+        "heartbeat": "1d",
+        "budget_monthly_usd": 60,
+        "skill_overlay": null,
+        "department": "product",
+        "level": "L·IV",
+        "reports_to": "cpo",
+        "spawnable": false
+      },
+      "cpo.growth": {
+        "status": "parked",
+        "adapter": "claude-code",
+        "heartbeat": "2h",
+        "budget_monthly_usd": 80,
+        "skill_overlay": null,
+        "department": "product",
+        "level": "L·IV",
+        "reports_to": "cpo",
+        "spawnable": true,
+        "unpark_condition": "Product is live with users to activate"
+      },
+      "cmo.demand": {
+        "status": "active",
+        "adapter": "claude-code",
+        "heartbeat": "2h",
+        "budget_monthly_usd": 80,
+        "skill_overlay": "ad_bidding_workflows_disabled: no ad-platform connector in manifest",
+        "department": "marketing",
+        "level": "L·IV",
+        "reports_to": "cmo",
+        "spawnable": true
+      },
+      "cmo.content": {
+        "status": "active",
+        "adapter": "claude-code",
+        "heartbeat": "4h",
+        "budget_monthly_usd": 80,
+        "skill_overlay": "weight_up: primary demand driver under content/PLG",
+        "department": "marketing",
+        "level": "L·IV",
+        "reports_to": "cmo",
+        "spawnable": true
+      },
+      "cmo.brand": {
+        "status": "active",
+        "adapter": "claude-code",
+        "heartbeat": "1d",
+        "budget_monthly_usd": 60,
+        "skill_overlay": "activate_early: narrative-first while waiting for PMF",
+        "department": "marketing",
+        "level": "L·IV",
+        "reports_to": "cmo",
+        "spawnable": false
+      },
+      "cmo.advocacy": {
+        "status": "active",
+        "adapter": "claude-code",
+        "heartbeat": "6h",
+        "budget_monthly_usd": 60,
+        "skill_overlay": "open_core_community: GitHub stars + contributor growth are your advocacy KPIs",
+        "department": "marketing",
+        "level": "L·IV",
+        "reports_to": "cmo",
+        "spawnable": false
+      },
+      "cro.outbound": {
+        "status": "parked",
+        "adapter": "claude-code",
+        "heartbeat": "2h",
+        "budget_monthly_usd": 80,
+        "skill_overlay": null,
+        "department": "revenue",
+        "level": "L·IV",
+        "reports_to": "cro",
+        "spawnable": true,
+        "unpark_condition": "Outbound sales motion adopted (gtm_profile_enum starts with OUTBOUND_)"
+      },
+      "cro.demo": {
+        "status": "active",
+        "adapter": "claude-code",
+        "heartbeat": "4h",
+        "budget_monthly_usd": 60,
+        "skill_overlay": null,
+        "department": "revenue",
+        "level": "L·IV",
+        "reports_to": "cro",
+        "spawnable": false
+      },
+      "cro.close": {
+        "status": "active",
+        "adapter": "claude-code",
+        "heartbeat": "2h",
+        "budget_monthly_usd": 80,
+        "skill_overlay": null,
+        "department": "revenue",
+        "level": "L·IV",
+        "reports_to": "cro",
+        "spawnable": false
+      },
+      "cro.expansion": {
+        "status": "parked",
+        "adapter": "claude-code",
+        "heartbeat": "6h",
+        "budget_monthly_usd": 80,
+        "skill_overlay": null,
+        "department": "revenue",
+        "level": "L·IV",
+        "reports_to": "cro",
+        "spawnable": true,
+        "unpark_condition": "First paying customers present (product_state=live_paying_customers)"
+      },
+      "cfo.capital": {
+        "status": "parked",
+        "adapter": "claude-code",
+        "heartbeat": "1h",
+        "budget_monthly_usd": 80,
+        "skill_overlay": null,
+        "department": "finance",
+        "level": "L·IV",
+        "reports_to": "cfo",
+        "spawnable": false,
+        "unpark_condition": "operator_unpark_from_mission_control",
+        "reason": "outside requested scope (marketing, revenue, product)"
+      },
+      "cfo.forecast": {
+        "status": "parked",
+        "adapter": "claude-code",
+        "heartbeat": "4h",
+        "budget_monthly_usd": 60,
+        "skill_overlay": null,
+        "department": "finance",
+        "level": "L·IV",
+        "reports_to": "cfo",
+        "spawnable": false,
+        "unpark_condition": "Stage reaches 10k_100k_mrr (forecast becomes actionable)"
+      },
+      "cfo.treasury": {
+        "status": "parked",
+        "adapter": "claude-code",
+        "heartbeat": "1d",
+        "budget_monthly_usd": 60,
+        "skill_overlay": null,
+        "department": "finance",
+        "level": "L·IV",
+        "reports_to": "cfo",
+        "spawnable": false,
+        "unpark_condition": "First paying customer (product_state=live_paying_customers)"
+      },
+      "cfo.econ": {
+        "status": "disabled",
+        "adapter": "claude-code",
+        "heartbeat": "1d",
+        "budget_monthly_usd": 60,
+        "skill_overlay": null,
+        "department": "finance",
+        "level": "L·IV",
+        "reports_to": "cfo",
+        "spawnable": false,
+        "reason": "Pre-revenue — no LTV/CAC ratio to defend yet"
+      },
+      "cdo.signal": {
+        "status": "parked",
+        "adapter": "claude-code",
+        "heartbeat": "1h",
+        "budget_monthly_usd": 80,
+        "skill_overlay": null,
+        "department": "data",
+        "level": "L·IV",
+        "reports_to": "cdo",
+        "spawnable": true,
+        "unpark_condition": "operator_unpark_from_mission_control",
+        "reason": "outside requested scope (marketing, revenue, product)"
+      },
+      "cdo.attribute": {
+        "status": "parked",
+        "adapter": "claude-code",
+        "heartbeat": "4h",
+        "budget_monthly_usd": 60,
+        "skill_overlay": null,
+        "department": "data",
+        "level": "L·IV",
+        "reports_to": "cdo",
+        "spawnable": false,
+        "unpark_condition": "Paying customers present (so there is something to attribute)"
+      },
+      "cdo.telemetry": {
+        "status": "parked",
+        "adapter": "claude-code",
+        "heartbeat": "2h",
+        "budget_monthly_usd": 60,
+        "skill_overlay": null,
+        "department": "data",
+        "level": "L·IV",
+        "reports_to": "cdo",
+        "spawnable": false,
+        "unpark_condition": "operator_unpark_from_mission_control",
+        "reason": "outside requested scope (marketing, revenue, product)"
+      },
+      "cdo.infer": {
+        "status": "parked",
+        "adapter": "claude-code",
+        "heartbeat": "6h",
+        "budget_monthly_usd": 80,
+        "skill_overlay": null,
+        "department": "data",
+        "level": "L·IV",
+        "reports_to": "cdo",
+        "spawnable": true,
+        "unpark_condition": "operator_unpark_from_mission_control",
+        "reason": "outside requested scope (marketing, revenue, product)"
+      },
+      "coo.health": {
+        "status": "parked",
+        "adapter": "claude-code",
+        "heartbeat": "15m",
+        "budget_monthly_usd": 40,
+        "skill_overlay": null,
+        "department": "ops",
+        "level": "L·IV",
+        "reports_to": "coo",
+        "spawnable": false,
+        "unpark_condition": "operator_unpark_from_mission_control",
+        "reason": "outside requested scope (marketing, revenue, product)"
+      },
+      "coo.connector": {
+        "status": "parked",
+        "adapter": "claude-code",
+        "heartbeat": "1h",
+        "budget_monthly_usd": 40,
+        "skill_overlay": null,
+        "department": "ops",
+        "level": "L·IV",
+        "reports_to": "coo",
+        "spawnable": false,
+        "unpark_condition": "operator_unpark_from_mission_control",
+        "reason": "outside requested scope (marketing, revenue, product)"
+      },
+      "coo.scheduler": {
+        "status": "parked",
+        "adapter": "claude-code",
+        "heartbeat": "15m",
+        "budget_monthly_usd": 40,
+        "skill_overlay": null,
+        "department": "ops",
+        "level": "L·IV",
+        "reports_to": "coo",
+        "spawnable": false,
+        "unpark_condition": "operator_unpark_from_mission_control",
+        "reason": "outside requested scope (marketing, revenue, product)"
+      },
+      "coo.memory": {
+        "status": "parked",
+        "adapter": "claude-code",
+        "heartbeat": "1d",
+        "budget_monthly_usd": 40,
+        "skill_overlay": null,
+        "department": "ops",
+        "level": "L·IV",
+        "reports_to": "coo",
+        "spawnable": false,
+        "unpark_condition": "operator_unpark_from_mission_control",
+        "reason": "outside requested scope (marketing, revenue, product)"
+      },
+      "coo.observability": {
+        "status": "parked",
+        "adapter": "claude-code",
+        "heartbeat": "1h",
+        "budget_monthly_usd": 0,
+        "skill_overlay": null,
+        "department": "ops",
+        "level": "L·IV",
+        "reports_to": "coo",
+        "spawnable": false,
+        "unpark_condition": "operator_unpark_from_mission_control",
+        "reason": "outside requested scope (marketing, revenue, product)"
+      },
+      "coo.dashboard": {
+        "status": "parked",
+        "adapter": "claude-code",
+        "heartbeat": "1h",
+        "budget_monthly_usd": 0,
+        "skill_overlay": null,
+        "department": "ops",
+        "level": "L·IV",
+        "reports_to": "coo",
+        "spawnable": false,
+        "unpark_condition": "Stage reaches 10k_100k_mrr (dashboard becomes load-bearing for Board communication)"
+      },
+      "coo.credentials": {
+        "status": "parked",
+        "adapter": "claude-code",
+        "heartbeat": "1d",
+        "budget_monthly_usd": 5,
+        "skill_overlay": null,
+        "department": "ops",
+        "level": "L·IV",
+        "reports_to": "coo",
+        "spawnable": false,
+        "unpark_condition": "operator_unpark_from_mission_control",
+        "reason": "outside requested scope (marketing, revenue, product)"
+      },
+      "ceo.chief-of-staff": {
+        "status": "active",
+        "adapter": "claude-code",
+        "heartbeat": "4h",
+        "budget_monthly_usd": 90,
+        "skill_overlay": null,
+        "department": "ceo",
+        "level": "L·II",
+        "reports_to": "ceo.orchestrator",
+        "spawnable": true
+      }
+    },
+    "spawn_eligibility": [
+      {
+        "agent": "cpo.build",
+        "marker": "S+",
+        "rationale": "dev_tools_industry: code velocity IS the product — build cadence gates activation"
+      },
+      {
+        "agent": "cmo.demand",
+        "marker": "S+",
+        "rationale": "ad_bidding_workflows_disabled: no ad-platform connector in manifest"
+      },
+      {
+        "agent": "cmo.content",
+        "marker": "S+",
+        "rationale": "weight_up: primary demand driver under content/PLG"
+      },
+      {
+        "agent": "cdo.signal",
+        "marker": "S+",
+        "rationale": "Default S+ eligibility per base roster rules"
+      },
+      {
+        "agent": "cdo.infer",
+        "marker": "S+",
+        "rationale": "Default S+ eligibility per base roster rules"
+      }
+    ],
+    "bundle_allocation_initial": {
+      "insight_activation": 0.37,
+      "pipeline_velocity": 0.04,
+      "expansion_engine": 0.09,
+      "unit_economics": 0.17,
+      "strategic_positioning": 0.33
+    }
+  },
+  "workflow_manifest": {
+    "schema_version": "1.0",
+    "generated_at": "2026-05-17T17:15:35.796Z",
+    "generated_by": "T0 · decision-matrix-fallback",
+    "based_on": {
+      "pillar_responses_hash": "sha256:63a674502cb4ab2e2aa65bbece2d4c6de3c2f336b7a7bed2f148482a48526e51",
+      "connector_manifest_hash": "sha256:1a325912c35ec3edd391e466f742bace60fd64d5db9f234984b8dcd1198f9b4f",
+      "swarm_manifest_hash": "sha256:14dd625884e2d929467971a9195637bcc2d0236a010f1c08497bcd0dbaa1b517"
+    },
+    "agent_workflows": {
+      "ceo.orchestrator": {
+        "heartbeat": "15m",
+        "on_fire": [
+          {
+            "task": "read_kpi_state_vector",
+            "tier": "T0",
+            "flow_type": "TLM",
+            "expected_output": "kpi_history"
+          },
+          {
+            "task": "compute_flywheel_score",
+            "tier": "T0",
+            "input": "kpi_history",
+            "expected_output": "flywheel_score"
+          },
+          {
+            "task": "allocate_bundle_attention",
+            "tier": "T2",
+            "input": "flywheel_score",
+            "expected_output": "alpha_weights"
+          },
+          {
+            "task": "oscillate_explore",
+            "tier": "T0",
+            "input": "alpha_weights",
+            "expected_output": "adjusted_alpha"
+          },
+          {
+            "task": "emit_bundle_asn_to_csuite",
+            "tier": "T2",
+            "flow_type": "ASN",
+            "input": "adjusted_alpha",
+            "expected_output": "asn_batch"
+          },
+          {
+            "task": "emit_cycle_narrative_to_board",
+            "tier": "T2",
+            "flow_type": "TLM",
+            "expected_output": "system_voice"
+          }
+        ],
+        "escalation": [
+          {
+            "on": "flywheel_score_lost_criticality",
+            "to": "board"
+          },
+          {
+            "on": "mc_winner_differs_3_cycles",
+            "to": "board"
+          },
+          {
+            "on": "cfo.capital.runway_alert",
+            "to": "board"
+          }
+        ]
+      },
+      "cpo": {
+        "heartbeat": "1h",
+        "on_fire": [
+          {
+            "task": "read_tlm_from_subagents",
+            "tier": "T0",
+            "flow_type": "TLM",
+            "expected_output": "dept_status"
+          },
+          {
+            "task": "synthesize_dept_state",
+            "tier": "T1",
+            "input": "dept_status",
+            "expected_output": "priorities"
+          },
+          {
+            "task": "emit_asn_to_subagents",
+            "tier": "T2",
+            "input": "priorities",
+            "flow_type": "ASN",
+            "expected_output": "bundle_task_assignments"
+          }
+        ],
+        "escalation": [
+          {
+            "on": "unable_to_complete || kpi_drift_detected",
+            "to": "ceo.orchestrator"
+          }
+        ]
+      },
+      "cmo": {
+        "heartbeat": "1h",
+        "on_fire": [
+          {
+            "task": "read_tlm_from_subagents",
+            "tier": "T0",
+            "flow_type": "TLM",
+            "expected_output": "dept_status"
+          },
+          {
+            "task": "synthesize_dept_state",
+            "tier": "T1",
+            "input": "dept_status",
+            "expected_output": "priorities"
+          },
+          {
+            "task": "emit_asn_to_subagents",
+            "tier": "T2",
+            "input": "priorities",
+            "flow_type": "ASN",
+            "expected_output": "bundle_task_assignments"
+          }
+        ],
+        "escalation": [
+          {
+            "on": "unable_to_complete || kpi_drift_detected",
+            "to": "ceo.orchestrator"
+          }
+        ]
+      },
+      "cro": {
+        "heartbeat": "1h",
+        "on_fire": [
+          {
+            "task": "read_tlm_from_subagents",
+            "tier": "T0",
+            "flow_type": "TLM",
+            "expected_output": "dept_status"
+          },
+          {
+            "task": "synthesize_dept_state",
+            "tier": "T1",
+            "input": "dept_status",
+            "expected_output": "priorities"
+          },
+          {
+            "task": "emit_asn_to_subagents",
+            "tier": "T2",
+            "input": "priorities",
+            "flow_type": "ASN",
+            "expected_output": "bundle_task_assignments"
+          }
+        ],
+        "escalation": [
+          {
+            "on": "unable_to_complete || kpi_drift_detected",
+            "to": "ceo.orchestrator"
+          }
+        ]
+      },
+      "cpo.build": {
+        "heartbeat": "2h",
+        "on_fire": [
+          {
+            "task": "read_asn_from_chief",
+            "tier": "T0",
+            "flow_type": "ASN",
+            "expected_output": "task_brief"
+          },
+          {
+            "task": "draft_artifact",
+            "tier": "T1",
+            "input": "task_brief",
+            "expected_output": "draft"
+          },
+          {
+            "task": "brand_voice_gate",
+            "tier": "T2",
+            "input": "draft",
+            "expected_output": "polished_draft"
+          },
+          {
+            "task": "publish_or_ship",
+            "tier": "T2",
+            "input": "polished_draft",
+            "expected_output": "shipped_artifact",
+            "connector": "github",
+            "dry_run_gate": true,
+            "flow_type": "VAL"
+          },
+          {
+            "task": "emit_val_to_chief",
+            "tier": "T0",
+            "flow_type": "VAL",
+            "input": "shipped_artifact"
+          }
+        ],
+        "escalation": [
+          {
+            "on": "unable_to_complete || kpi_drift_detected",
+            "to": "cpo"
+          }
+        ]
+      },
+      "cpo.roadmap": {
+        "heartbeat": "1d",
+        "on_fire": [
+          {
+            "task": "read_asn_from_chief",
+            "tier": "T0",
+            "flow_type": "ASN",
+            "expected_output": "task_brief"
+          },
+          {
+            "task": "draft_artifact",
+            "tier": "T1",
+            "input": "task_brief",
+            "expected_output": "draft"
+          },
+          {
+            "task": "brand_voice_gate",
+            "tier": "T2",
+            "input": "draft",
+            "expected_output": "polished_draft"
+          },
+          {
+            "task": "publish_or_ship",
+            "tier": "T2",
+            "input": "polished_draft",
+            "expected_output": "shipped_artifact",
+            "connector": "github",
+            "dry_run_gate": true,
+            "flow_type": "VAL"
+          },
+          {
+            "task": "emit_val_to_chief",
+            "tier": "T0",
+            "flow_type": "VAL",
+            "input": "shipped_artifact"
+          }
+        ],
+        "escalation": [
+          {
+            "on": "unable_to_complete || kpi_drift_detected",
+            "to": "cpo"
+          }
+        ]
+      },
+      "cmo.demand": {
+        "heartbeat": "2h",
+        "on_fire": [
+          {
+            "task": "pull_new_leads",
+            "tier": "T0",
+            "flow_type": "TLM",
+            "expected_output": "lead_list"
+          },
+          {
+            "task": "score_leads",
+            "tier": "T0",
+            "input": "lead_list",
+            "expected_output": "scored_leads"
+          },
+          {
+            "task": "personalize_sequences",
+            "tier": "T1",
+            "input": "scored_leads",
+            "expected_output": "draft_sequences"
+          },
+          {
+            "task": "quality_gate_high_value",
+            "tier": "T2",
+            "input": "draft_sequences",
+            "expected_output": "approved_sequences"
+          },
+          {
+            "task": "send_outbound_messages",
+            "tier": "T0",
+            "input": "approved_sequences",
+            "flow_type": "VAL",
+            "expected_output": "delivery_receipts",
+            "dry_run_gate": true
+          },
+          {
+            "task": "emit_val_to_chief",
+            "tier": "T0",
+            "flow_type": "VAL",
+            "input": "delivery_receipts"
+          }
+        ],
+        "escalation": [
+          {
+            "on": "unable_to_complete || kpi_drift_detected",
+            "to": "cmo"
+          },
+          {
+            "on": "lead_count_drops_gt_30pct_wow",
+            "to": "cmo"
+          }
+        ]
+      },
+      "cmo.content": {
+        "heartbeat": "4h",
+        "on_fire": [
+          {
+            "task": "read_asn_from_chief",
+            "tier": "T0",
+            "flow_type": "ASN",
+            "expected_output": "task_brief"
+          },
+          {
+            "task": "draft_artifact",
+            "tier": "T1",
+            "input": "task_brief",
+            "expected_output": "draft"
+          },
+          {
+            "task": "brand_voice_gate",
+            "tier": "T2",
+            "input": "draft",
+            "expected_output": "polished_draft"
+          },
+          {
+            "task": "publish_or_ship",
+            "tier": "T2",
+            "input": "polished_draft",
+            "expected_output": "shipped_artifact",
+            "connector": null,
+            "dry_run_gate": true,
+            "flow_type": "VAL"
+          },
+          {
+            "task": "emit_val_to_chief",
+            "tier": "T0",
+            "flow_type": "VAL",
+            "input": "shipped_artifact"
+          }
+        ],
+        "escalation": [
+          {
+            "on": "unable_to_complete || kpi_drift_detected",
+            "to": "cmo"
+          }
+        ]
+      },
+      "cmo.brand": {
+        "heartbeat": "1d",
+        "on_fire": [
+          {
+            "task": "read_asn_from_chief",
+            "tier": "T0",
+            "flow_type": "ASN",
+            "expected_output": "task_brief"
+          },
+          {
+            "task": "draft_artifact",
+            "tier": "T1",
+            "input": "task_brief",
+            "expected_output": "draft"
+          },
+          {
+            "task": "brand_voice_gate",
+            "tier": "T2",
+            "input": "draft",
+            "expected_output": "polished_draft"
+          },
+          {
+            "task": "publish_or_ship",
+            "tier": "T2",
+            "input": "polished_draft",
+            "expected_output": "shipped_artifact",
+            "connector": null,
+            "dry_run_gate": true,
+            "flow_type": "VAL"
+          },
+          {
+            "task": "emit_val_to_chief",
+            "tier": "T0",
+            "flow_type": "VAL",
+            "input": "shipped_artifact"
+          }
+        ],
+        "escalation": [
+          {
+            "on": "unable_to_complete || kpi_drift_detected",
+            "to": "cmo"
+          }
+        ]
+      },
+      "cmo.advocacy": {
+        "heartbeat": "6h",
+        "on_fire": [
+          {
+            "task": "watch_for_closed_deals",
+            "tier": "T0",
+            "flow_type": "VAL",
+            "expected_output": "closed_accounts"
+          },
+          {
+            "task": "propose_case_study_candidates",
+            "tier": "T1",
+            "input": "closed_accounts",
+            "expected_output": "candidates"
+          },
+          {
+            "task": "enroll_in_case_study_pipeline",
+            "tier": "T2",
+            "input": "candidates",
+            "flow_type": "VAL",
+            "expected_output": "enrolled",
+            "dry_run_gate": true
+          },
+          {
+            "task": "emit_val_to_cmo_content",
+            "tier": "T0",
+            "flow_type": "VAL",
+            "input": "enrolled"
+          }
+        ],
+        "escalation": [
+          {
+            "on": "unable_to_complete || kpi_drift_detected",
+            "to": "cmo"
+          }
+        ]
+      },
+      "cro.demo": {
+        "heartbeat": "4h",
+        "on_fire": [
+          {
+            "task": "read_pipeline_queue",
+            "tier": "T0",
+            "flow_type": "TLM",
+            "expected_output": "open_deals"
+          },
+          {
+            "task": "prepare_engagement_brief",
+            "tier": "T2",
+            "input": "open_deals",
+            "expected_output": "brief"
+          },
+          {
+            "task": "execute_customer_action",
+            "tier": "T2",
+            "input": "brief",
+            "flow_type": "VAL",
+            "expected_output": "outcome",
+            "dry_run_gate": true
+          },
+          {
+            "task": "log_outcome_tlm",
+            "tier": "T0",
+            "flow_type": "TLM",
+            "input": "outcome"
+          }
+        ],
+        "escalation": [
+          {
+            "on": "unable_to_complete || kpi_drift_detected",
+            "to": "cro"
+          }
+        ]
+      },
+      "cro.close": {
+        "heartbeat": "2h",
+        "on_fire": [
+          {
+            "task": "read_pipeline_queue",
+            "tier": "T0",
+            "flow_type": "TLM",
+            "expected_output": "open_deals"
+          },
+          {
+            "task": "prepare_engagement_brief",
+            "tier": "T2",
+            "input": "open_deals",
+            "expected_output": "brief"
+          },
+          {
+            "task": "execute_customer_action",
+            "tier": "T2",
+            "input": "brief",
+            "flow_type": "VAL",
+            "expected_output": "outcome",
+            "dry_run_gate": true
+          },
+          {
+            "task": "log_outcome_tlm",
+            "tier": "T0",
+            "flow_type": "TLM",
+            "input": "outcome"
+          }
+        ],
+        "escalation": [
+          {
+            "on": "unable_to_complete || kpi_drift_detected",
+            "to": "cro"
+          }
+        ]
+      },
+      "ceo.chief-of-staff": {
+        "heartbeat": "4h",
+        "on_fire": [
+          {
+            "task": "read_tlm_from_subagents",
+            "tier": "T0",
+            "flow_type": "TLM",
+            "expected_output": "dept_status"
+          },
+          {
+            "task": "synthesize_dept_state",
+            "tier": "T1",
+            "input": "dept_status",
+            "expected_output": "priorities"
+          },
+          {
+            "task": "emit_asn_to_subagents",
+            "tier": "T2",
+            "input": "priorities",
+            "flow_type": "ASN",
+            "expected_output": "bundle_task_assignments"
+          }
+        ],
+        "escalation": [
+          {
+            "on": "unable_to_complete || kpi_drift_detected",
+            "to": "ceo.orchestrator"
+          }
+        ]
+      }
+    },
+    "bundle_workflows": {
+      "insight_activation": {
+        "owner": "cpo.growth",
+        "cycle_length": "24h",
+        "participating_agents": [
+          "cpo.build",
+          "cmo.content"
+        ],
+        "kpis_moved": [
+          "activation_rate",
+          "ttv_hours",
+          "nrr"
+        ]
+      },
+      "pipeline_velocity": {
+        "owner": "cro.chief",
+        "cycle_length": "1w",
+        "participating_agents": [
+          "cmo.demand",
+          "cro.demo",
+          "cro.close"
+        ],
+        "kpis_moved": [
+          "cac",
+          "sales_cycle_days",
+          "win_rate",
+          "mrr"
+        ]
+      },
+      "expansion_engine": {
+        "owner": "cro.expansion",
+        "cycle_length": "per-account",
+        "participating_agents": [
+          "cpo.build",
+          "cmo.advocacy",
+          "cmo.content"
+        ],
+        "kpis_moved": [
+          "nrr",
+          "grr",
+          "referral_rate",
+          "mrr",
+          "inbound_quality"
+        ]
+      },
+      "unit_economics": {
+        "owner": "cfo.capital",
+        "cycle_length": "1d",
+        "participating_agents": [],
+        "kpis_moved": [
+          "burn_multiple",
+          "cac_payback_months",
+          "cac"
+        ]
+      },
+      "strategic_positioning": {
+        "owner": "cmo.brand",
+        "cycle_length": "1mo",
+        "participating_agents": [
+          "cmo.brand",
+          "cpo.build",
+          "cmo.content",
+          "cro.demo"
+        ],
+        "kpis_moved": [
+          "narrative_strength",
+          "inbound_quality",
+          "sales_cycle_days",
+          "win_rate"
+        ]
+      }
+    },
+    "scheduled_routines_enabled": {
+      "flywheel.couple": "0 * * * *",
+      "flywheel.bifurcate": "0 */4 * * *",
+      "flywheel.criticality": "0 * * * *",
+      "flywheel.reallocate": "0 0 * * 1",
+      "flywheel.monte-carlo": "0 3 * * *"
+    },
+    "dry_run_gates": [
+      "cmo.advocacy.enroll_in_case_study_pipeline",
+      "cmo.brand.publish_or_ship",
+      "cmo.content.publish_or_ship",
+      "cmo.demand.send_outbound_messages",
+      "cpo.build.publish_or_ship",
+      "cpo.roadmap.publish_or_ship",
+      "cro.close.execute_customer_action",
+      "cro.demo.execute_customer_action"
+    ]
+  },
+  "mc_winner": {
+    "strategy_id": "RETENTION_FIRST",
+    "sharpe": 0,
+    "mean_mrr_growth": 0,
+    "mean_burn_multiple": 0,
+    "p_auto_catalytic": 0,
+    "p_ruin": 0,
+    "mean_cycles_to_critical": null,
+    "rationale": "RETENTION_FIRST wins on capital preservation: p(ruin) 0%, mean activation-rate growth 17.6% over horizon. MRR is held flat at this stage — compounding dynamics haven't started yet.",
+    "run_params": {
+      "horizon_cycles": 30,
+      "n_runs": 30,
+      "seed": 42
+    }
+  },
+  "mc_report_ref": "./monte_carlo_report.json",
+  "imprint_summary": "tony-apple-qa is Tony Apple QA Studio is a B2B SaaS that gives mobile-app teams automated QA + smoke-test infrastructure for iOS and Android apps. Tony Stark — currently a QA Engineer at Apple — is. It is in the built_not_selling stage (pre_product) with a CONTENT_LED_PLG GTM motion. Board notifications route via telegram.\n\n25 of 34 agents are active. Parked: cfo, cdo, coo, cpo.qa, cpo.growth, cro.outbound, cro.expansion, cfo.capital, cfo.forecast, cfo.treasury, cdo.signal, cdo.attribute, cdo.telemetry, cdo.infer, coo.health, coo.connector, coo.scheduler, coo.memory, coo.observability, coo.dashboard, coo.credentials. Disabled: cfo.econ. Connectors required at launch: claude-code, github, telegram. Suggested but optional: supabase, mixpanel.\n\nMonte Carlo over 30 runs × 30 cycles recommends the RETENTION_FIRST strategy (Sharpe 0.00, mean MRR growth 0% over horizon, p(auto-catalytic) 0%).\n\nThe system runs dry until 2026-05-31T17:15:23.157Z — 8 tasks across the swarm are gated and will log intended output without writing externally. Review the first round of proposals via telegram before flipping dry_run off.",
+  "dry_run": {
+    "enabled": true,
+    "expires_at": "2026-05-31T17:15:23.157Z",
+    "post_expiration_action": "require_board_approval_to_go_live"
+  },
+  "signatures": {
+    "generated_by_operator": "board",
+    "generated_by_system": "OPERATOR_Ω/plugin-onboarding@0.1.0 · run=20d3d737-d85c-43f1-a137-bebb713346fc",
+    "manifest_hash": "sha256:4bfc72a0e9baf78094270133f1062319188caffd2864764496ed63f7958800db"
+  },
+  "signed_at": "2026-05-17T17:15:35.799Z",
+  "goal": {
+    "kpiId": "monthly_recurring_revenue",
+    "current": 5000,
+    "target": 15000,
+    "days": 90
+  },
+  "template_selections": {
+    "ceo.orchestrator": {
+      "chosenTemplateId": "ceo",
+      "defaultTemplateId": "ceo",
+      "diverged": false,
+      "score": 0,
+      "rationale": "no per-company variation defined for this slot"
+    },
+    "cpo": {
+      "chosenTemplateId": "cpo",
+      "defaultTemplateId": "cpo",
+      "diverged": false,
+      "score": 0,
+      "rationale": "no per-company variation defined for this slot"
+    },
+    "cmo": {
+      "chosenTemplateId": "cmo",
+      "defaultTemplateId": "cmo",
+      "diverged": false,
+      "score": 0,
+      "rationale": "no per-company variation defined for this slot"
+    },
+    "cro": {
+      "chosenTemplateId": "cro",
+      "defaultTemplateId": "cro",
+      "diverged": false,
+      "score": 0,
+      "rationale": "no per-company variation defined for this slot"
+    },
+    "cfo": {
+      "chosenTemplateId": "cfo",
+      "defaultTemplateId": "cfo",
+      "diverged": false,
+      "score": 0,
+      "rationale": "no per-company variation defined for this slot"
+    },
+    "cdo": {
+      "chosenTemplateId": "cdo",
+      "defaultTemplateId": "cdo",
+      "diverged": false,
+      "score": 0,
+      "rationale": "no per-company variation defined for this slot"
+    },
+    "coo": {
+      "chosenTemplateId": "coo",
+      "defaultTemplateId": "coo",
+      "diverged": false,
+      "score": 0,
+      "rationale": "no per-company variation defined for this slot"
+    },
+    "cpo.build": {
+      "chosenTemplateId": "backend-architect",
+      "defaultTemplateId": "backend-architect",
+      "diverged": false,
+      "score": 0.63,
+      "rationale": "industry fit (saas-b2b, open-source) + GTM fit (assisted-demo) + connector fit (github)"
+    },
+    "cpo.qa": {
+      "chosenTemplateId": "api-tester",
+      "defaultTemplateId": "accessibility-auditor",
+      "diverged": true,
+      "score": 0.63,
+      "rationale": "industry fit (saas-b2b, open-source) + GTM fit (assisted-demo) + connector fit (github)"
+    },
+    "cpo.roadmap": {
+      "chosenTemplateId": "product-manager",
+      "defaultTemplateId": "product-manager",
+      "diverged": false,
+      "score": 0.38,
+      "rationale": "industry fit (saas-b2b) + GTM fit (assisted-demo)"
+    },
+    "cpo.growth": {
+      "chosenTemplateId": "growth-hacker",
+      "defaultTemplateId": "growth-hacker",
+      "diverged": false,
+      "score": 0.38,
+      "rationale": "industry fit (saas-b2b) + GTM fit (assisted-demo)"
+    },
+    "cmo.demand": {
+      "chosenTemplateId": "community-builder",
+      "defaultTemplateId": "growth-hacker",
+      "diverged": true,
+      "score": 0.43,
+      "rationale": "industry fit (saas-b2b, open-source) + connector fit (github)"
+    },
+    "cmo.content": {
+      "chosenTemplateId": "content-creator",
+      "defaultTemplateId": "content-creator",
+      "diverged": false,
+      "score": 0.35,
+      "rationale": "industry fit (saas-b2b, open-source)"
+    },
+    "cmo.brand": {
+      "chosenTemplateId": "content-creator",
+      "defaultTemplateId": "ad-creative-strategist",
+      "diverged": true,
+      "score": 0.35,
+      "rationale": "industry fit (saas-b2b, open-source)"
+    },
+    "cmo.advocacy": {
+      "chosenTemplateId": "community-builder",
+      "defaultTemplateId": "content-creator",
+      "diverged": true,
+      "score": 0.43,
+      "rationale": "industry fit (saas-b2b, open-source) + connector fit (github)"
+    },
+    "cro.outbound": {
+      "chosenTemplateId": "sales-coach",
+      "defaultTemplateId": "sales-coach",
+      "diverged": false,
+      "score": 0.38,
+      "rationale": "industry fit (saas-b2b) + GTM fit (assisted-demo)"
+    },
+    "cro.demo": {
+      "chosenTemplateId": "sales-engineer",
+      "defaultTemplateId": "sales-engineer",
+      "diverged": false,
+      "score": 0.46,
+      "rationale": "industry fit (saas-b2b) + GTM fit (assisted-demo) + connector fit (github)"
+    },
+    "cro.close": {
+      "chosenTemplateId": "sales-coach",
+      "defaultTemplateId": "sales-coach",
+      "diverged": false,
+      "score": 0.38,
+      "rationale": "industry fit (saas-b2b) + GTM fit (assisted-demo)"
+    },
+    "cro.expansion": {
+      "chosenTemplateId": "sales-coach",
+      "defaultTemplateId": "sales-coach",
+      "diverged": false,
+      "score": 0.38,
+      "rationale": "industry fit (saas-b2b) + GTM fit (assisted-demo)"
+    },
+    "cfo.capital": {
+      "chosenTemplateId": "financial-analyst",
+      "defaultTemplateId": "financial-analyst",
+      "diverged": false,
+      "score": 0.38,
+      "rationale": "industry fit (saas-b2b) + GTM fit (assisted-demo)"
+    },
+    "cfo.forecast": {
+      "chosenTemplateId": "financial-analyst",
+      "defaultTemplateId": "financial-analyst",
+      "diverged": false,
+      "score": 0.38,
+      "rationale": "industry fit (saas-b2b) + GTM fit (assisted-demo)"
+    },
+    "cfo.treasury": {
+      "chosenTemplateId": "bookkeeper",
+      "defaultTemplateId": "bookkeeper",
+      "diverged": false,
+      "score": 0.38,
+      "rationale": "industry fit (saas-b2b) + GTM fit (assisted-demo)"
+    },
+    "cfo.econ": {
+      "chosenTemplateId": "financial-analyst",
+      "defaultTemplateId": "financial-analyst",
+      "diverged": false,
+      "score": 0.38,
+      "rationale": "industry fit (saas-b2b) + GTM fit (assisted-demo)"
+    },
+    "cdo.signal": {
+      "chosenTemplateId": "ai-engineer",
+      "defaultTemplateId": "ai-engineer",
+      "diverged": false,
+      "score": 0.55,
+      "rationale": "industry fit (saas-b2b, open-source) + GTM fit (assisted-demo)"
+    },
+    "cdo.attribute": {
+      "chosenTemplateId": "support-analytics",
+      "defaultTemplateId": "support-analytics",
+      "diverged": false,
+      "score": 0.38,
+      "rationale": "industry fit (saas-b2b) + GTM fit (assisted-demo)"
+    },
+    "cdo.telemetry": {
+      "chosenTemplateId": "support-analytics",
+      "defaultTemplateId": "support-analytics",
+      "diverged": false,
+      "score": 0.38,
+      "rationale": "industry fit (saas-b2b) + GTM fit (assisted-demo)"
+    },
+    "cdo.infer": {
+      "chosenTemplateId": "ai-engineer",
+      "defaultTemplateId": "ai-engineer",
+      "diverged": false,
+      "score": 0.55,
+      "rationale": "industry fit (saas-b2b, open-source) + GTM fit (assisted-demo)"
+    },
+    "coo.health": {
+      "chosenTemplateId": "recovery-engineer",
+      "defaultTemplateId": "recovery-engineer",
+      "diverged": false,
+      "score": 0.55,
+      "rationale": "industry fit (saas-b2b, open-source) + GTM fit (assisted-demo)"
+    },
+    "coo.connector": {
+      "chosenTemplateId": "composio-integration",
+      "defaultTemplateId": "composio-integration",
+      "diverged": false,
+      "score": 0,
+      "rationale": "no per-company variation defined for this slot"
+    },
+    "coo.scheduler": {
+      "chosenTemplateId": "devops-engineer",
+      "defaultTemplateId": "devops-engineer",
+      "diverged": false,
+      "score": 0.63,
+      "rationale": "industry fit (saas-b2b, open-source) + GTM fit (assisted-demo) + connector fit (github)"
+    },
+    "coo.memory": {
+      "chosenTemplateId": "devops-engineer",
+      "defaultTemplateId": "devops-engineer",
+      "diverged": false,
+      "score": 0.63,
+      "rationale": "industry fit (saas-b2b, open-source) + GTM fit (assisted-demo) + connector fit (github)"
+    },
+    "coo.observability": {
+      "chosenTemplateId": "devops-engineer",
+      "defaultTemplateId": "devops-engineer",
+      "diverged": false,
+      "score": 0.63,
+      "rationale": "industry fit (saas-b2b, open-source) + GTM fit (assisted-demo) + connector fit (github)"
+    },
+    "coo.dashboard": {
+      "chosenTemplateId": "frontend-developer",
+      "defaultTemplateId": "frontend-developer",
+      "diverged": false,
+      "score": 0.63,
+      "rationale": "industry fit (saas-b2b, open-source) + GTM fit (assisted-demo) + connector fit (github)"
+    },
+    "coo.credentials": {
+      "chosenTemplateId": "composio-integration",
+      "defaultTemplateId": "composio-integration",
+      "diverged": false,
+      "score": 0,
+      "rationale": "no per-company variation defined for this slot"
+    },
+    "ceo.chief-of-staff": {
+      "chosenTemplateId": "chief-of-staff",
+      "defaultTemplateId": "chief-of-staff",
+      "diverged": false,
+      "score": 0,
+      "rationale": "no per-company variation defined for this slot"
+    }
+  }
+}

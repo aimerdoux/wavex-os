@@ -1,0 +1,78 @@
+{
+  "generated_at": "2026-05-17T17:15:35.806Z",
+  "horizon_cycles": 30,
+  "n_runs_per_strategy": 30,
+  "seed": 42,
+  "mode": "pre_scale",
+  "strategies": [
+    {
+      "strategy_id": "RETENTION_FIRST",
+      "n_runs": 30,
+      "horizon_cycles": 30,
+      "mean_mrr_growth": 0,
+      "std_mrr_growth": 0,
+      "sharpe": 0,
+      "mean_burn_multiple": 0,
+      "p_ruin": 0,
+      "p_auto_catalytic": 0,
+      "mean_cycles_to_critical": null,
+      "mean_activation_growth": 0.17587741911717814
+    },
+    {
+      "strategy_id": "BALANCED",
+      "n_runs": 30,
+      "horizon_cycles": 30,
+      "mean_mrr_growth": 0,
+      "std_mrr_growth": 0,
+      "sharpe": 0,
+      "mean_burn_multiple": 0,
+      "p_ruin": 0,
+      "p_auto_catalytic": 0,
+      "mean_cycles_to_critical": null,
+      "mean_activation_growth": 0.11929012598025529
+    },
+    {
+      "strategy_id": "ACQUISITION_HEAVY",
+      "n_runs": 30,
+      "horizon_cycles": 30,
+      "mean_mrr_growth": 0,
+      "std_mrr_growth": 0,
+      "sharpe": 0,
+      "mean_burn_multiple": 0,
+      "p_ruin": 0,
+      "p_auto_catalytic": 0,
+      "mean_cycles_to_critical": null,
+      "mean_activation_growth": 0.08948654337547582
+    },
+    {
+      "strategy_id": "NARRATIVE_LED",
+      "n_runs": 30,
+      "horizon_cycles": 30,
+      "mean_mrr_growth": 0,
+      "std_mrr_growth": 0,
+      "sharpe": 0,
+      "mean_burn_multiple": 0,
+      "p_ruin": 0,
+      "p_auto_catalytic": 0,
+      "mean_cycles_to_critical": null,
+      "mean_activation_growth": 0.09090859857371907
+    },
+    {
+      "strategy_id": "CAPITAL_EFFICIENT",
+      "n_runs": 30,
+      "horizon_cycles": 30,
+      "mean_mrr_growth": 0,
+      "std_mrr_growth": 0,
+      "sharpe": 0,
+      "mean_burn_multiple": 0,
+      "p_ruin": 0,
+      "p_auto_catalytic": 0,
+      "mean_cycles_to_critical": null,
+      "mean_activation_growth": 0.090081152558654
+    }
+  ],
+  "winner": {
+    "strategy_id": "RETENTION_FIRST",
+    "rationale": "RETENTION_FIRST wins on capital preservation: p(ruin) 0%, mean activation-rate growth 17.6% over horizon. MRR is held flat at this stage — compounding dynamics haven't started yet."
+  }
+}

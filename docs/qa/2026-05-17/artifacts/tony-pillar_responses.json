@@ -1,0 +1,63 @@
+{
+  "schema_version": "1.0",
+  "started_at": "2026-05-17T17:07:01.746Z",
+  "completed_at": "2026-05-17T17:14:53.737Z",
+  "pillar_1": {
+    "org_name": "tony-apple-qa",
+    "company_context": "Tony Apple QA Studio is a B2B SaaS that gives mobile-app teams automated QA + smoke-test infrastructure for iOS and Android apps. Tony Stark — currently a QA Engineer at Apple — is the solo founder, building this on the side. We have a working product but no paying customers yet (pre-revenue, building toward design partners). Go-to-market is hybrid: sales-led outreach for enterprise mobile teams, plus marketing-led / PLG content for individual developers. Today the team uses GitHub for issue tracking, Linear for project management, and Slack for internal comms. Notification channel preference: Telegram.",
+    "enrichment_status": "manual_capture",
+    "has_product": true,
+    "industry_hint": "dev_tools",
+    "business_model_hint": "subscription",
+    "ideal_customer_profile": "enterprise ops teams",
+    "revenue_model": "subscription",
+    "competitive_position": "emerging",
+    "primary_acquisition_channel": "content seo",
+    "product_maturity_signal": "ga",
+    "tone_signal": "enterprise",
+    "primary_friction_hypothesis": "friction point not clearly specified — infer from GTM stage",
+    "differentiator_hypothesis": "Tony Apple QA Studio is a B2B SaaS that gives mobile-app teams automated QA + smoke-test infrastructure for iOS and Android apps",
+    "raw_input": "no product yet",
+    "enriched_at": "2026-05-17T17:13:10.247Z"
+  },
+  "pillar_2": {
+    "claude_code_verified": true,
+    "claude_plan": "max_20x",
+    "claude_version": "wavex-os hosted (Pool A)",
+    "inference_budget_profile": "conservative",
+    "verified_at": "2026-05-17T17:07:06.593Z"
+  },
+  "pillar_3": {
+    "product_state": "built_not_selling",
+    "stage": "pre_product",
+    "kpi_snapshot_initial": {
+      "t": "2026-05-17T17:14:38.803Z",
+      "mrr": 0,
+      "nrr": 1,
+      "grr": 1,
+      "cac": 0,
+      "cac_payback_months": 0,
+      "burn_multiple": 0,
+      "activation_rate": 0,
+      "sales_cycle_days": 0,
+      "win_rate": 0,
+      "ltv_cac_ratio": 0,
+      "pipeline_velocity": 0,
+      "narrative_strength": 0.4,
+      "ai_estimated": true
+    }
+  },
+  "pillar_4": {
+    "lead_sources": [
+      "content_seo",
+      "outbound_cold",
+      "product_led_viral"
+    ],
+    "lead_source": "content_seo",
+    "sales_motion": "assisted_demo",
+    "gtm_profile_enum": "CONTENT_LED_PLG"
+  },
+  "pillar_5": {
+    "comm_channel": "telegram"
+  }
+}

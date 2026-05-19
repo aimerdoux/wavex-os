@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "ran_at": 1779037273,
+  "ran_at_iso": "2026-05-17T17:01:13.000Z",
+  "next_run_at": 1779037573,
+  "cycle_duration_ms": 6071,
+  "checks": {
+    "token": {
+      "status": "refresh_failed",
+      "expires_at": null,
+      "user_id": null,
+      "detail": "refresh_failed: invalid_refresh_token"
+    },
+    "git": {
+      "status": "dirty_tree",
+      "current_sha": "543243e2645357ee10cf9d286e5bd60c45342eed",
+      "remote_sha": "543243e2645357ee10cf9d286e5bd60c45342eed",
+      "commits_pulled": 0,
+      "files_changed": [],
+      "restart_needed": [],
+      "detail": "Working tree has uncommitted changes; refusing to pull"
+    },
+    "install": {
+      "status": "skipped",
+      "duration_ms": 0,
+      "detail": null
+    },
+    "build": {
+      "status": "ok",
+      "packages_rebuilt": [
+        "@wavex-os/inference-server",
+        "@wavex-os/onboarding-ui",
+        "@wavex-os/paperclip-plugin-wavex"
+      ],
+      "detail": "rebuilt stale packages"
+    },
+    "processes": {
+      "status": "ok",
+      "mock_core": "alive",
+      "op_omega_server": "alive",
+      "paperclip": "alive",
+      "restarted": [],
+      "detail": null
+    }
+  },
+  "requires_user_action": {
+    "reason": "dirty_tree",
+    "button_label": "Discard local changes",
+    "detail": "Your wavex-os repo has uncommitted local changes. Auto-update is paused. Click to discard and resume."
+  },
+  "cloud_push": {
+    "status": "ok",
+    "detail": null,
+    "inserted_id": "84d03d88-b06f-4164-a986-bd4138001d47",
+    "fleet_status": "degraded"
+  }
+}
