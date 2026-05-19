@@ -1,6 +1,6 @@
 {
   "name": "@wavex-os/paperclip-plugin-wavex",
-  "version": "0.1.0",
+  "version": "0.9.0",
   "description": "WaveX customization layer for Paperclip — branded dashboard, Expert Agents panel, Inception Status, WaveX issue templates. Plugin (not fork) so paperclip subtree updates stay clean.",
   "license": "MIT",
   "private": true,
@@ -15,12 +15,14 @@
   },
   "scripts": {
     "prebuild": "pnpm --filter @paperclipai/plugin-sdk ensure-build-deps 2>/dev/null || true",
-    "build": "tsc",
+    "build": "tsc && node build-ui.mjs",
     "clean": "rm -rf dist",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
-    "@wavex-os/plugin-sdk-shim": "workspace:*"
+    "@wavex-os/plugin-sdk-shim": "workspace:*",
+    "@wavex-os/shared": "workspace:*"
   },
   "devDependencies": {
     "@paperclipai/plugin-sdk": "workspace:*",
@@ -29,7 +31,8 @@
     "@types/react-dom": "^19.0.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
   },
   "peerDependencies": {
     "react": ">=18"

@@ -21,9 +21,9 @@ import {
   isOnboardingHaltError,
   type ConnectorEntry,
 } from "@wavex-os/plugin-onboarding";
-import { listConnections } from "@wavex-os/composio-shim";
+import { listConnections, listAllToolkits, FEATURED_TOOLKITS, _resetClient as resetComposioClient } from "@wavex-os/composio-shim";
 import { assertBoard, assertCompanyAccess, AuthError } from "@wavex-os/auth-shim";
-import { listConnectorStates, writeCredential, recordTestResult, skipConnector } from "../vault/service.js";
+import { listConnectorStates, writeCredential, recordTestResult, skipConnector, deleteAllForConnector } from "../vault/service.js";
 import { runProbe, hasProbe } from "../vault/probes.js";
 import { scanInstalledMcpServersMap, mcpAvailableFor, type DetectedMcp } from "../lib/mcp-scanner.js";
 
@@ -212,6 +212,53 @@ function describeConnector(id: string): { keys: string[]; composio: boolean } {
   return CONNECTOR_KEY_SCHEMA[id] ?? { keys: [], composio: false };
 }
 
+// ── Connector setup helpers ──────────────────────────────────────────
+//
+// resolveRepoEnvPath() finds <repo>/.env. The op-omega-server runs
+// from packages/op-omega-server/, so we walk up to the workspace root.
+// writeOrUpdateEnvFile preserves existing keys + only replaces the
+// values for the keys we manage.
+
+async function resolveRepoEnvPath(): Promise<string> {
+  const { fileURLToPath } = await import("node:url");
+  const here = fileURLToPath(import.meta.url);
+  // .../packages/op-omega-server/src/routes/credentials.ts → walk up to repo
+  const { resolve, dirname } = await import("node:path");
+  const dir = dirname(here);
+  return resolve(dir, "..", "..", "..", "..", ".env");
+}
+
+async function writeOrUpdateEnvFile(
+  envPath: string,
+  updates: Record<string, string>,
+): Promise<void> {
+  const { readFile, writeFile } = await import("node:fs/promises");
+  let existing = "";
+  try {
+    existing = await readFile(envPath, "utf8");
+  } catch {
+    // file doesn't exist yet — we'll create it
+  }
+  const lines = existing ? existing.split(/\r?\n/) : [];
+  const seen = new Set<string>();
+  const next: string[] = [];
+  for (const line of lines) {
+    const match = line.match(/^([A-Z_][A-Z0-9_]*)\s*=/);
+    if (match && updates[match[1]!] !== undefined) {
+      next.push(`${match[1]}=${updates[match[1]!]}`);
+      seen.add(match[1]!);
+    } else {
+      next.push(line);
+    }
+  }
+  for (const [k, v] of Object.entries(updates)) {
+    if (!seen.has(k)) next.push(`${k}=${v}`);
+  }
+  // Trim trailing blank lines, ensure single newline at end.
+  while (next.length > 0 && next[next.length - 1]!.trim() === "") next.pop();
+  await writeFile(envPath, `${next.join("\n")}\n`, "utf8");
+}
+
 export function registerCredentialRoutes(app: FastifyInstance): void {
   app.get("/wavex-os/onboarding/credentials/:companyId", async (req, reply) => {
     if (!gateBoard(req, reply)) return;
@@ -331,4 +378,194 @@ export function registerCredentialRoutes(app: FastifyInstance): void {
     });
     return { ok: true };
   });
+
+  // ── Connector setup — UI gates the Directory on these two ──────────
+  //
+  // GET  /api/connectors/setup-status
+  //   Returns { configured, valid, mode, lastError? } so the Directory
+  //   modal can render a setup screen instead of the catalog when the
+  //   Composio key is missing or invalid.
+  //
+  // POST /api/connectors/setup
+  //   Body: { apiKey }. Validates by calling toolkits.get({}), writes
+  //   to <repo>/.env, mutates process.env in-memory, and resets the
+  //   composio-shim cached client. No process restart required.
+
+  app.get("/api/connectors/setup-status", async (_req, reply) => {
+    const hasKey = Boolean((process.env.COMPOSIO_API_KEY ?? "").trim());
+    const disabled = (process.env.WAVEX_COMPOSIO_DISABLED ?? "").toLowerCase();
+    const isDisabled = disabled === "1" || disabled === "true" || disabled === "yes";
+    const configured = hasKey && !isDisabled;
+    if (!configured) {
+      return reply.send({
+        ok: true,
+        configured: false,
+        valid: false,
+        mode: hasKey ? "disabled" : "missing-key",
+      });
+    }
+    // Smoke-test the key by asking Composio for one toolkit.
+    try {
+      const rows = await listAllToolkits();
+      if (rows == null) {
+        return reply.send({
+          ok: true,
+          configured: true,
+          valid: false,
+          mode: "key-rejected",
+          lastError: "Composio rejected the key — getClient returned null.",
+        });
+      }
+      return reply.send({
+        ok: true,
+        configured: true,
+        valid: true,
+        mode: "live",
+        toolkitCount: rows.length,
+      });
+    } catch (err) {
+      return reply.send({
+        ok: true,
+        configured: true,
+        valid: false,
+        mode: "validation-error",
+        lastError: err instanceof Error ? err.message : String(err),
+      });
+    }
+  });
+
+  app.post<{ Body: { apiKey?: string } }>(
+    "/api/connectors/setup",
+    async (req, reply) => {
+      const apiKey = (req.body?.apiKey ?? "").trim();
+      if (!apiKey) {
+        return reply.code(400).send({ ok: false, error: "apiKey is required." });
+      }
+      // 1. Mutate process.env so the next getClient() call picks up
+      //    the new key (composio-shim's getComposioApiKey() re-reads
+      //    process.env on every call, and we reset the cached client
+      //    below so it rebuilds with the new key).
+      process.env.COMPOSIO_API_KEY = apiKey;
+      process.env.WAVEX_COMPOSIO_DISABLED = "0";
+      resetComposioClient();
+      // 2. Validate by attempting a real catalog fetch. If this fails
+      //    we revert the env so the operator can try again with a
+      //    different key.
+      let rows: Awaited<ReturnType<typeof listAllToolkits>> = null;
+      try {
+        rows = await listAllToolkits();
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return reply.code(400).send({
+          ok: false,
+          error: `Composio rejected the key: ${message}`,
+        });
+      }
+      if (rows == null || rows.length === 0) {
+        return reply.code(400).send({
+          ok: false,
+          error:
+            "Composio returned an empty catalog — the key may be invalid or revoked.",
+        });
+      }
+      // 3. Persist to <repo>/.env so the key survives a process restart.
+      //    Done AFTER validation so we never write a bad key to disk.
+      const envPath = await resolveRepoEnvPath();
+      try {
+        await writeOrUpdateEnvFile(envPath, {
+          COMPOSIO_API_KEY: apiKey,
+          WAVEX_COMPOSIO_DISABLED: "0",
+        });
+      } catch (err) {
+        // Validation passed but persistence failed — surface a warning.
+        return reply.send({
+          ok: true,
+          valid: true,
+          persisted: false,
+          toolkitCount: rows.length,
+          warning: `Validated but couldn't write to .env: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+      // 4. Invalidate the catalog cache so the next list call fetches
+      //    fresh data with the new client.
+      _cachedCatalog = null;
+      return reply.send({
+        ok: true,
+        valid: true,
+        persisted: true,
+        toolkitCount: rows.length,
+      });
+    },
+  );
+
+  /** Full Composio toolkit catalog (live mode) OR FEATURED_TOOLKITS
+   *  fallback (disabled mode). The connector directory's "+" cards are
+   *  built from this. Cached in-process for 5 min — the catalog is
+   *  ~200+ entries and rarely changes. */
+  let _cachedCatalog: { ts: number; rows: Array<{ slug: string; name: string; logo?: string; description?: string; category?: string; noAuth?: boolean; authSchemes?: string[] }>; source: "composio" | "curated" } | null = null;
+  app.get("/api/connectors/catalog", async (_req, reply) => {
+    const now = Date.now();
+    if (_cachedCatalog && now - _cachedCatalog.ts < 5 * 60_000) {
+      return reply.send({ ok: true, ...{ rows: _cachedCatalog.rows, source: _cachedCatalog.source, cached: true } });
+    }
+    const live = await listAllToolkits();
+    if (live && live.length > 0) {
+      // Strip toolkits with neither OAuth nor API key — they need
+      // bespoke setup (mTLS, custom webhooks, etc.) and can't drive a
+      // generic "+" → OAuth flow.
+      const usable = live.filter((t) => t.noAuth !== true && (t.authSchemes?.length ?? 0) > 0);
+      _cachedCatalog = { ts: now, rows: usable, source: "composio" };
+      return reply.send({ ok: true, rows: usable, source: "composio", cached: false });
+    }
+    const fallback = FEATURED_TOOLKITS.map((t) => ({
+      slug: t.slug,
+      name: t.displayName,
+      category: t.category,
+    }));
+    _cachedCatalog = { ts: now, rows: fallback, source: "curated" };
+    return reply.send({ ok: true, rows: fallback, source: "curated", cached: false });
+  });
+
+  // ── Mission Control · Connectors directory ──────────────────────────
+  //
+  // Two slim routes the unified Connectors UI consumes. Both wrap the
+  // existing vault service so the connector picker, the onboarding
+  // concierge, and the post-onboarding directory share state.
+
+  /** Per-company list of connectors that currently have credentials in
+   *  the vault. Returns just slug + status; the UI overlays this onto
+   *  the Composio catalog. */
+  app.get<{ Params: { companyId: string } }>(
+    "/api/connectors/:companyId/connected",
+    async (req, reply) => {
+      if (!gateBoard(req, reply)) return;
+      const { companyId } = req.params;
+      assertCompanyAccess(authReq(req), companyId);
+      const states = await listConnectorStates(companyId);
+      const rows = Array.from(states.values()).map((s) => ({
+        slug: s.connectorId,
+        status: s.status,
+        vaultedKeys: s.vaultedKeys,
+        lastTestedAt: s.lastTestedAt,
+        skipReason: s.skipReason,
+      }));
+      return { ok: true, rows };
+    },
+  );
+
+  /** Remove every vaulted credential for one connector + audit it.
+   *  Idempotent — a slug with no credentials returns 200 + removed=0. */
+  app.delete<{ Params: { companyId: string; slug: string } }>(
+    "/api/connectors/:companyId/:slug",
+    async (req, reply) => {
+      if (!gateBoard(req, reply)) return;
+      const { companyId, slug } = req.params;
+      assertCompanyAccess(authReq(req), companyId);
+      const result = await deleteAllForConnector({
+        companyId,
+        connectorId: slug,
+      });
+      return { ok: true, removed: result.removed };
+    },
+  );
 }

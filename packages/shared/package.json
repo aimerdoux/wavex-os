@@ -1,0 +1,39 @@
+{
+  "name": "@wavex-os/shared",
+  "version": "0.1.0",
+  "description": "Shared types + zod schemas + cross-package primitives for wavex-os. Currently: Mission Control universal accountability model (Task, Deliverable, ScopeNode, ActivityEvent, KPI, ExpectedKpiImpact). Future home for charter types when Avatar v2.1 returns to queue.",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "wavex-source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./types/mission-control": {
+      "wavex-source": "./src/types/mission-control.ts",
+      "default": "./dist/types/mission-control.js"
+    },
+    "./schemas/mission-control": {
+      "wavex-source": "./src/schemas/mission-control.ts",
+      "default": "./dist/schemas/mission-control.js"
+    }
+  },
+  "files": [
+    "src",
+    "dist"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "prepare": "tsc -p tsconfig.build.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.16.5",
+    "typescript": "^5.5.4",
+    "vitest": "^2.1.8"
+  }
+}
