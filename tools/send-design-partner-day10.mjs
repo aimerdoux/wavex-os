@@ -8,6 +8,7 @@
  * Pre-send checklist (verify on 2026-05-27 before live run):
  *   1. Check inbox / WAVAAAA-120 for replies — skip + route any respondents to wavexcard.com/lp/design-partners
  *   2. RESEND_API_KEY confirmed present in /Users/geniex/paperclip/.env
+ *   3. Verify https://cal.com/wavex/design-partner returns 200 (not 404) before live run
  *
  * Authority: WAVAAAA-445
  *
@@ -28,10 +29,13 @@ if (!RESEND_API_KEY && !DRY_RUN) {
   process.exit(1);
 }
 
+const CALENDAR_HREF = "https://cal.com/wavex/design-partner";
+
 const BODY_TEMPLATE = (name) => `<p>Hi ${name},</p>
 <p>I have sent a few notes about the WaveX design partner program and have not heard back, so I will leave it here.</p>
 <p>If mobile CI/CD reliability or test flakiness becomes a priority later, we would love to talk. First 3 design partners get $1k/mo (90-day pilot).</p>
-<p><a href="https://wavexcard.com/lp/design-partners">https://wavexcard.com/lp/design-partners</a></p>
+<p><a href="${CALENDAR_HREF}">Book a 20-min call →</a></p>
+<p>Or visit: <a href="https://wavexcard.com/lp/design-partners">wavexcard.com/lp/design-partners</a></p>
 <p>Thanks for your time.<br>Dylan</p>`;
 
 const SUBJECT = 'Closing the loop — WaveX design partner';

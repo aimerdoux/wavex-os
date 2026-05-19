@@ -28,8 +28,7 @@ const WHO_FOR = [
   "Companies shipping ≥1 app update per week",
 ];
 
-// Temporary: mailto fallback until cal.com/Calendly page is created (WAVAAAA-120)
-const CALENDAR_HREF = "mailto:dylan@wavexcard.com?subject=WaveX%20Design%20Partner%20Call%20Request";
+const CALENDAR_HREF = "https://cal.com/wavex/design-partner";
 
 export default function DesignPartners(): JSX.Element {
   // Preserve UTM params on all CTA clicks
