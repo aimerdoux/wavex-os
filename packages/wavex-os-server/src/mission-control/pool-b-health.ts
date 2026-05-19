@@ -96,6 +96,25 @@ export interface DailySpendRow {
   rate_limited: number;
 }
 
+export interface OperatorQuotaStatus {
+  /** Pool B usage in the rolling 24h / 7d / 30d window (token totals). */
+  tokens_used_24h: number;
+  tokens_used_7d: number;
+  tokens_used_30d: number;
+  /** Pool B cost in USD over the same windows. */
+  cost_usd_24h: number;
+  cost_usd_7d: number;
+  cost_usd_30d: number;
+  /** Inference call count over the same windows — useful for sizing the
+   *  throttle slider (operator's intuition is usually "X req/min", not
+   *  tokens). */
+  requests_24h: number;
+  requests_7d: number;
+  /** ISO timestamp of the most recent Pool B inference, or null if
+   *  nothing has been served. */
+  last_inference_at: string | null;
+}
+
 export interface InstallFunnelSummary {
   /** Pairings created in the last 24h (regardless of status). */
   pairings_initiated_24h: number;
@@ -263,6 +282,72 @@ export async function dailyPoolBSpend(days = 14, fresh = false): Promise<DailySp
   });
   setCached(key, rows);
   return rows;
+}
+
+/** Operator-side Pool B usage rollup — feeds the life bar at the top of
+ *  the Pool B Health widget. Aggregates raw usage_ledger rows client-side
+ *  over the last 30 days; on-disk rows for a single-operator instance
+ *  stay well under 10k so this is cheap. If we ever scale to hosted
+ *  multi-operator, swap to a server-side aggregation RPC. */
+export async function operatorQuotaStatus(fresh = false): Promise<OperatorQuotaStatus> {
+  const key = "operator-quota";
+  if (!fresh) {
+    const hit = cached<OperatorQuotaStatus>(key);
+    if (hit) return hit;
+  }
+  const empty: OperatorQuotaStatus = {
+    tokens_used_24h: 0, tokens_used_7d: 0, tokens_used_30d: 0,
+    cost_usd_24h: 0, cost_usd_7d: 0, cost_usd_30d: 0,
+    requests_24h: 0, requests_7d: 0,
+    last_inference_at: null,
+  };
+  const sb = getClient();
+  if (!sb) return empty;
+
+  const sinceIso = new Date(Date.now() - 30 * 24 * 60 * 60_000).toISOString();
+  const { data, error } = await (sb as unknown as {
+    schema: (s: string) => typeof sb;
+  }).schema("wavex_os").from("usage_ledger")
+    .select("ran_at, prompt_tokens, completion_tokens, cost_cents, status")
+    .eq("pool", "B")
+    .gte("ran_at", sinceIso)
+    .order("ran_at", { ascending: false })
+    .limit(20_000);
+  if (error || !data) return empty;
+
+  const now = Date.now();
+  const ONE_DAY = 24 * 60 * 60_000;
+  const result: OperatorQuotaStatus = { ...empty };
+  for (const r of data as Array<{
+    ran_at: string; prompt_tokens: number; completion_tokens: number;
+    cost_cents: number; status: string;
+  }>) {
+    const ageMs = now - new Date(r.ran_at).getTime();
+    if (ageMs < 0) continue;
+    const tokens = (r.prompt_tokens ?? 0) + (r.completion_tokens ?? 0);
+    const costUsd = (r.cost_cents ?? 0) / 100;
+    if (ageMs <= 30 * ONE_DAY) {
+      result.tokens_used_30d += tokens;
+      result.cost_usd_30d += costUsd;
+    }
+    if (ageMs <= 7 * ONE_DAY) {
+      result.tokens_used_7d += tokens;
+      result.cost_usd_7d += costUsd;
+      result.requests_7d += 1;
+    }
+    if (ageMs <= ONE_DAY) {
+      result.tokens_used_24h += tokens;
+      result.cost_usd_24h += costUsd;
+      result.requests_24h += 1;
+    }
+  }
+  // First row is the most recent because we ordered by ran_at desc.
+  const rows = data as Array<{ ran_at: string }>;
+  if (rows.length > 0) {
+    result.last_inference_at = rows[0].ran_at;
+  }
+  setCached(key, result);
+  return result;
 }
 
 export async function installFunnelSummary(fresh = false): Promise<InstallFunnelSummary> {

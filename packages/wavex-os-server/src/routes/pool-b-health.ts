@@ -19,6 +19,7 @@ import {
   pendingPairings,
   dailyPoolBSpend,
   installFunnelSummary,
+  operatorQuotaStatus,
 } from "../mission-control/pool-b-health.js";
 
 function authReq(req: FastifyRequest) {
@@ -91,5 +92,19 @@ export function registerPoolBHealthRoutes(app: FastifyInstance): void {
     }
     const summary = await installFunnelSummary(isFresh(req));
     return { ok: true, summary };
+  });
+
+  // Operator-side Pool B usage roll-up — feeds the life bar at the top
+  // of the Pool B Health widget. Tokens + cost over 24h / 7d / 30d
+  // windows. Drives the "am I about to blow my Claude Max quota?"
+  // glance check the operator does before triggering big customer flows.
+  app.get("/api/pool-b-health/operator-quota", async (req, reply) => {
+    const ar = authReq(req);
+    try { assertBoard(ar); } catch (e) {
+      if (e instanceof AuthError) return reply.status(e.statusCode).send({ error: e.message });
+      throw e;
+    }
+    const status = await operatorQuotaStatus(isFresh(req));
+    return { ok: true, status };
   });
 }

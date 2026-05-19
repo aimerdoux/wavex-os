@@ -61,6 +61,11 @@ interface SetupStatusResponse {
   ok: boolean;
   configured: boolean;
   valid: boolean;
+  /** WaveX-managed mode: customer doesn't bring their own Composio key;
+   *  the operator runs WaveX-as-a-service and provides the key server-side.
+   *  When true, the directory skips the key-entry modal entirely and shows
+   *  "Managed by WaveX" instead. The catalog still loads identically. */
+  managed?: boolean;
   mode: "live" | "missing-key" | "disabled" | "key-rejected" | "validation-error" | "error";
   toolkitCount?: number;
   lastError?: string;
@@ -603,7 +608,14 @@ function DirectoryModal({
             <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: TEXT_MUTED, fontSize: 14 }}>
               Checking Composio…
             </div>
-          ) : !setupStatus.data?.valid ? (
+          ) : (!setupStatus.data?.valid && !setupStatus.data?.managed) ? (
+            // SetupScreen only renders when there's something the *user*
+            // can do — paste a key. In WaveX-managed mode (operator runs
+            // WaveX-as-a-service, customer never holds the Composio key)
+            // we always fall through to the catalog, even if `valid: false`.
+            // An empty/degraded catalog is the right signal — "Composio
+            // is temporarily unavailable, your subscription covers it
+            // when it's back" — not "go enter your own key here".
             <SetupScreen
               status={setupStatus.data}
               onComplete={() => {
