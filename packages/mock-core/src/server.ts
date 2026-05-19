@@ -157,6 +157,8 @@ registerWavexOsRoutes(app);
 
 // --- routes ---------------------------------------------------------------
 
+app.get("/health", async () => ({ status: "ok" }));
+
 app.get("/api/health", async () => ({
   ok: true,
   service: "wavex-os-mock-core",
