@@ -19,6 +19,14 @@ pnpm dev              # runs onboarding-ui + mock-core in parallel
 
 Open [http://localhost:5173](http://localhost:5173) — you'll land on Mission Control.
 
+### Testing without a real Claude subscription
+
+Use `WAVEX_CLAUDE_STUB=1` when you need to run tests without making real inference calls. The wrapper skips the live Claude credential path and uses a synthetic credential for plumbing tests.
+
+```bash
+WAVEX_CLAUDE_STUB=1 pnpm test
+```
+
 To work on individual packages:
 
 ```bash
