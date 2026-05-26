@@ -144,6 +144,19 @@ This boots two servers in parallel:
 
 Open [http://localhost:5173](http://localhost:5173) and you'll land on Mission Control. Click **Start onboarding** to begin the wizard.
 
+#### Port collision on `5173`
+
+The onboarding UI intentionally uses Vite's strict port mode so the installer,
+README commands, and Playwright QA flow all point at the same address. If
+`pnpm dev` exits because `5173` is already in use, stop the other Vite/dev
+server and rerun:
+
+```bash
+lsof -nP -iTCP:5173 -sTCP:LISTEN
+# then stop that process, or close the terminal running it
+pnpm dev
+```
+
 ### Optional — hand off to a running Paperclip instance
 
 If you've got Paperclip running locally, point WaveX OS at it and the wizard's activate step will also hire your C-Suite as real Paperclip agents:
