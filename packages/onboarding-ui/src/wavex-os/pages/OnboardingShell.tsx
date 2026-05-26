@@ -40,7 +40,7 @@ import { SwarmStudio } from "./SwarmStudio";
 import { ImprintTheater } from "./ImprintTheater";
 import { ActivateProgress } from "./ActivateProgress";
 import { Pricing } from "../pricing/Pricing";
-import { reducer, initialState, phaseProgressPct, type AccountType, type AvatarAutomationSuggestion, type AvatarProfile, type AvatarProfilePrefill, type AvatarToolConnection, type AvatarTrust, type AvatarVoiceProfile, type ChatMessage, type ChatSlot } from "../state/onboarding-reducer";
+import { reducer, initialState, phaseProgressPct, type AccountType, type AvatarAutomationSuggestion, type AvatarProfile, type AvatarProfilePrefill, type AvatarToolConnection, type AvatarTrust, type AvatarVoiceProfile, type ChatMessage, type ChatSlot, type OnboardingPhase } from "../state/onboarding-reducer";
 import type { ConnectorManifest, Pillar1Response, Pillar3Response, Pillar4Response, Pillar5Response, SwarmManifest } from "@wavex-os/plugin-onboarding";
 
 /** Heuristic: does the typed input look like a URL or a hostname?
@@ -127,6 +127,44 @@ function inputLooksLikeUrl(text: string): boolean {
  *  operator for more detail before submitting (better UX than a 400). */
 const MANUAL_CONTEXT_MIN_CHARS = 40;
 
+function onboardingPhaseTitle(phase: OnboardingPhase): string {
+  switch (phase.kind) {
+    case "pillars": {
+      const labels: Record<1 | 2 | 3 | 4 | 5, string> = {
+        1: "Pillar 1: Who you are",
+        2: "Pillar 2: Setup verification",
+        3: "Pillar 3: Product state",
+        4: "Pillar 4: GTM motion",
+        5: "Pillar 5: Comms",
+      };
+      return `WaveX OS — ${labels[phase.stage]}`;
+    }
+    case "connectors":
+    case "credentials":
+      return "WaveX OS — Phase 2: Connectors";
+    case "swarm_transition":
+    case "swarm_studio":
+      return "WaveX OS — Phase 3: Swarm";
+    case "imprint_theater":
+    case "pricing":
+      return "WaveX OS — Finalize";
+    case "activate":
+      return "WaveX OS — Activate";
+    case "account_type_select":
+    case "welcome":
+      return "WaveX OS — Onboarding";
+    case "avatar_welcome":
+    case "avatar_profile":
+    case "avatar_tools":
+    case "avatar_voice":
+    case "avatar_trust":
+    case "avatar_suggestions":
+      return "WaveX OS — Avatar setup";
+    default:
+      return "WaveX OS";
+  }
+}
+
 // ── Chat session localStorage persistence ────────────────────────────────────
 // Keyed by companyId so different companies don't clobber each other.
 // Version prefix lets us silently discard stale serialization formats.
@@ -171,6 +209,13 @@ export function OnboardingShell() {
     return { ...s, ...(loadChatSession(storedId) ?? {}) };
   });
   const t0 = isT0FastMode();
+
+  useEffect(() => {
+    document.title = onboardingPhaseTitle(state.phase);
+    return () => {
+      document.title = "WaveX OS";
+    };
+  }, [state.phase]);
 
   // ── First mount: resume path ────────────────────────────────────────────
   // Fresh state shows an EmptyState hero. When companyId is present in the
@@ -1888,4 +1933,3 @@ function ChatInput({
     </div>
   );
 }
-
