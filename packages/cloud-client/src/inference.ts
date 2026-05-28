@@ -51,6 +51,15 @@ export interface CloudInferenceRequest {
   max_output_tokens?: number;
   /** Optional purpose tag for the cloud-side usage ledger. */
   purpose?: string;
+  /** Optional request-correlation fields for Pool B accountability logs. */
+  session_id?: string;
+  conversation_id?: string;
+  trace_id?: string;
+  client_name?: string;
+  client_version?: string;
+  source?: string;
+  context_input_tokens?: number;
+  message_count?: number;
 }
 
 export interface CloudInferenceResponse {
@@ -58,6 +67,9 @@ export interface CloudInferenceResponse {
   content: string;
   model: string;
   request_id: string;
+  provider?: string;
+  provider_response_id?: string;
+  fallback_used?: boolean;
   usage: {
     input_tokens: number;
     output_tokens: number;
@@ -223,6 +235,14 @@ export async function cloudInference(
         model: req.model,
         max_output_tokens: req.max_output_tokens,
         purpose: req.purpose,
+        session_id: req.session_id,
+        conversation_id: req.conversation_id,
+        trace_id: req.trace_id,
+        client_name: req.client_name ?? "cloud-client",
+        client_version: req.client_version,
+        source: req.source ?? "cloud-client",
+        context_input_tokens: req.context_input_tokens,
+        message_count: req.message_count,
       },
     });
     if (sendResult !== "ok") {

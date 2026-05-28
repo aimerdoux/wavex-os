@@ -92,6 +92,12 @@ curl http://127.0.0.1:8787/v1/health
 | `SUPABASE_SERVICE_ROLE_KEY` | unset | Required by G.3.b onward |
 | `ANTHROPIC_API_KEY` | unset | Required by G.3.b. Fallback for OAuth-blocked cases. |
 | `INFERENCE_BACKEND` | `oauth` | `oauth` uses Keychain OAuth; `apikey` uses ANTHROPIC_API_KEY. |
+| `WAVEX_OS_STREAMING_INFERENCE_ENABLED` | unset | `1` enables Pool B relay. Omit to keep observe-and-reject mode. |
+| `WAVEX_OS_POOL_B_PROVIDER_MODE` | `anthropic_only` | `anthropic_only`, `anthropic_then_codex`, or `codex_only` for prompt-based Pool B coverage. |
+| `WAVEX_OS_POOL_B_OPENAI_MODEL` | `gpt-5` | OpenAI model used when the Codex/OpenAI fallback path is active. |
+| `OPENAI_API_KEY` | unset | Required when `WAVEX_OS_POOL_B_PROVIDER_MODE` uses the Codex/OpenAI fallback path. |
+| `WAVEX_OS_POOL_B_OPENAI_INPUT_USD_PER_1M` | unset | Optional pricing override for OpenAI fallback cost accounting. |
+| `WAVEX_OS_POOL_B_OPENAI_OUTPUT_USD_PER_1M` | unset | Optional pricing override for OpenAI fallback cost accounting. |
 | `REDIS_URL` | `redis://localhost:6379` | Rate limit + idempotency store |
 
 ## Endpoints
@@ -106,6 +112,7 @@ curl http://127.0.0.1:8787/v1/health
 | POST | `/admin/freeze` | n/a | stub (G.3.b) — needs `x-admin-token` header |
 | POST | `/admin/unfreeze` | n/a | stub (G.3.b) |
 | GET | `/admin/status` | n/a | stub (G.3.b) |
+| GET | `/admin/pool-b/requests?limit=100` | n/a | recent Supabase-backed Pool B forensic audit rows |
 
 ## TOS note (V2_CAPTURE_C §3 + §8)
 

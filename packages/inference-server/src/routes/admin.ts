@@ -10,6 +10,13 @@
  */
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { dropKey, setSize } from "../lib/rate-limit.js";
+import {
+  hasPoolBOpenAiKey,
+  isPoolBEnabled,
+  poolBAuditLogPath,
+  poolBOpenAiModel,
+  poolBProviderMode,
+} from "../lib/pool-b-control.js";
 
 interface FreezeBody {
   reason?: string;
@@ -27,6 +34,27 @@ function requireAdminToken(req: FastifyRequest, reply: FastifyReply): boolean {
     return false;
   }
   return true;
+}
+
+async function callServiceRpc<T>(name: string, body: Record<string, unknown>): Promise<{ ok: true; data: T } | { ok: false; status: number; error: string }> {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) {
+    return { ok: false, status: 503, error: "supabase_not_configured" };
+  }
+  const resp = await fetch(`${url}/rest/v1/rpc/${name}`, {
+    method: "POST",
+    headers: {
+      apikey: key,
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) {
+    return { ok: false, status: resp.status, error: `${name}_failed` };
+  }
+  return { ok: true, data: (await resp.json()) as T };
 }
 
 export async function registerAdmin(app: FastifyInstance): Promise<void> {
@@ -48,7 +76,32 @@ export async function registerAdmin(app: FastifyInstance): Promise<void> {
       pool_a_burn_today_cents: 0,
       pool_c_burn_today_cents: 0,
       daily_cap_cents: 1000,
+      pool_b_streaming_enabled: isPoolBEnabled(),
+      pool_b_audit_log_path: poolBAuditLogPath(),
+      pool_b_provider_mode: poolBProviderMode(),
+      pool_b_openai_model: poolBOpenAiModel(),
+      pool_b_openai_key_present: hasPoolBOpenAiKey(),
       note: "Phase G.3 stub — real ledger reads land in G.3.b",
+    });
+  });
+
+  app.get<{ Querystring: { limit?: string } }>("/admin/pool-b/requests", async (req, reply) => {
+    if (!requireAdminToken(req, reply)) return;
+    const parsed = Number(req.query.limit ?? "100");
+    const limit = Number.isFinite(parsed) ? Math.min(Math.max(Math.floor(parsed), 1), 500) : 100;
+    const result = await callServiceRpc<unknown[]>("wavex_os_recent_inference_audit", {
+      p_limit: limit,
+    });
+    if (!result.ok) {
+      return reply.code(result.status).send({
+        ok: false,
+        error: result.error,
+      });
+    }
+    return reply.send({
+      ok: true,
+      limit,
+      rows: result.data,
     });
   });
 

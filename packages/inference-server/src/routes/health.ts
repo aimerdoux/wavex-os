@@ -10,7 +10,7 @@ const HEALTH_PAYLOAD = {
   status: "ok",
   service: "wavex-inference-server",
   version: "0.1.0",
-  pools: ["A", "C"],
+  pools: ["A", "B", "C"],
 } as const;
 
 export async function registerHealth(app: FastifyInstance): Promise<void> {
