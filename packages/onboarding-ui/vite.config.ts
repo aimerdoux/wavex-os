@@ -9,6 +9,8 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
+    // Keep the UI on the documented port so Playwright, installer probes, and
+    // onboarding smoke scripts all target the same dev server.
     strictPort: true,
     // Bind explicitly to 127.0.0.1 (IPv4) — macOS Vite defaults to IPv6-only,
     // which can prevent localhost connections from tooling that prefers IPv4.
