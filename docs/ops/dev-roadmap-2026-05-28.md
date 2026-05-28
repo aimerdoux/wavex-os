@@ -136,6 +136,52 @@ again. D5 proves Pool B is accountable. D6 makes the whole thing safe to leave
 running unattended — which is the actual product requirement behind "better
 inference handling."
 
+## End-of-session status (2026-05-28, autonomous run)
+
+Branch `feat/skills-sh-listing`, pushed through `76ce0fb6`.
+
+| # | Status | Result |
+|---|---|---|
+| D1 | ✅ done | `e001d64c` — 8 null-safety errors fixed; build green (0 non-vendor tsc errors) |
+| D2 | ✅ done | `cba4f681`+`3e76959b`+`0baa7a3f`+`3bb53968`+`19de4855` — Codex Pool B suite committed in 5 grouped commits; migration prefix collision resolved; all 4 touched packages typecheck clean |
+| D3 | ✅ done | 2 May-27 migrations applied to prod Supabase; verified: `wavex_os_device_lookup`, `wavex_os_record_inference_audit`, `wavex_os_recent_inference_audit` all resolve; `usage_ledger` pool check now `A,B,C` |
+| D6 | ✅ done | G1 `6c291153` (pre-flight quota gate on activate, classifier 4/4 unit-tested) + G2 `76ce0fb6` (circuit-breaker script). This is the "creation/activation" inference fix. |
+| D4 | ⏸ DEFERRED | needs live servers + supervision — see runbook below |
+| D5 | ⏸ DEFERRED | needs inference-server + a paired device — see runbook below |
+
+**Why D4/D5 were deferred (not skipped):** the entire point of today's work
+was to stop invisible quota burn. Turning a 35-agent fleet loose unattended —
+even on opus — before a human can watch it would contradict that. The fleet is
+left dormant (safe default). G1 now gates any re-activation, and G2 can be
+armed as a cron breaker the moment the fleet comes up.
+
+### D4 runbook (run supervised)
+
+```bash
+cd /Users/geniex/wavex-os
+export WAVEX_AGENT_MODEL=opus            # Sonnet bucket throttles independently
+pnpm dev                                  # boots mock-core :3101 + onboarding-ui :5173
+# in another shell, confirm Paperclip :3100 is up (npx paperclipai run from ~/paperclip if not)
+# the 35 agents already carry model=opus in Paperclip's DB (patched 2026-05-21)
+# resume STAGGERED — do NOT mass-resume (that tripped the 429 burst):
+#   resume CEO first, watch one heartbeat complete, then resume the rest in small batches
+curl -s -X POST http://127.0.0.1:3100/api/agents/<CEO_ID>/heartbeat/invoke -d '{}'
+# arm the breaker on a 10-min cron so a drain auto-pauses the fleet:
+node scripts/ops/wavex-quota-circuit-breaker.mjs b515f8b2-0976-4838-b8a9-c08d430d8177
+```
+
+### D5 runbook (Pool B 4-case smoke — gap-doc step 4)
+
+With `WAVEX_OS_STREAMING_INFERENCE_ENABLED` unset, drive: 1 HTTP prompt,
+1 Realtime prompt, 1 rejected, 1 duplicate. Then confirm all four land:
+
+```sql
+select route, status, request_id, occurred_at
+from wavex_os.inference_audit_events
+order by occurred_at desc limit 10;
+```
+or `GET /admin/pool-b/requests` on the inference-server.
+
 ## Hard constraints (carry-over)
 
 - NEVER clean `usage_ledger`, `inference_audit_events`, `fleet_digests`,
