@@ -23,6 +23,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Security audit
+        # TODO: restore --audit-level=high after existing Fastify, Drizzle, and fast-uri high advisories are patched.
+        run: pnpm audit --audit-level=critical
+
       - name: Build vendored wavex-os packages
         run: pnpm -r --filter "./vendor/wavex-os/*" build
 
