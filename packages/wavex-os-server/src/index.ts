@@ -56,6 +56,8 @@ import { registerReferralRoutes } from "./routes/referrals.js";
 import { registerGitHubReposRoute } from "./routes/github-repos.js";
 import { registerMissionControlRoutes } from "./routes/mission-control.js";
 import { startReferralEmailBScheduler } from "./jobs/referral-email-b.js";
+import { startProfessionalReengagementScheduler } from "./jobs/professional-reengagement.js";
+import { registerReengagementRoutes } from "./routes/reengagement.js";
 
 let bootstrapped = false;
 function bootstrap(): void {
@@ -114,7 +116,9 @@ export function registerWavexOsRoutes(app: FastifyInstance): void {
   registerReferralRoutes(app);
   registerGitHubReposRoute(app);
   registerMissionControlRoutes(app);
+  registerReengagementRoutes(app);
   startReferralEmailBScheduler();
+  startProfessionalReengagementScheduler();
 }
 
 export { applyStateBridge, getInstanceDir, getOnboardingDir, getWavexDataRoot } from "./state-bridge.js";

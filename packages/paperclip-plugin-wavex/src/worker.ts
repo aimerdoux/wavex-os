@@ -1066,6 +1066,21 @@ const plugin = definePlugin({
       return await r.json();
     });
 
+    // WAVAAAAA-584 — weekly inbound-quality scoreboard tick. Mirrors
+    // mission-control-sample-kpis. Backs the Sunday 23:00 UTC routine.
+    ctx.actions.register("mission-control-sample-inbound-quality", async ({ companyId }) => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      const id = await resolveWavexSlug(String(companyId ?? ""));
+      if (!id) return { ok: false, perSourceRows: 0, perChannelRows: 0 };
+      const r = await localFetch(
+        `${base}/api/mission-control/${encodeURIComponent(id)}/sample-inbound-quality`,
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" },
+      );
+      if (!r.ok) return { ok: false, perSourceRows: 0, perChannelRows: 0, status: r.status };
+      return await r.json();
+    });
+
     ctx.data.register("mission-control-scoreboard", async ({ companyId }) => {
       const cfg = (await ctx.config.get()) as PluginConfig | null;
       const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
