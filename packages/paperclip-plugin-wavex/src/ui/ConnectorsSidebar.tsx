@@ -1044,9 +1044,30 @@ function SetupScreen({
   onComplete: () => void;
 }) {
   const setup = usePluginAction("connectors-setup");
+  const enableManaged = usePluginAction("connectors-enable-managed");
   const [apiKey, setApiKey] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [enabling, setEnabling] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showByoKey, setShowByoKey] = useState(false);
+
+  const handleManaged = async () => {
+    if (enabling) return;
+    setEnabling(true);
+    setError(null);
+    try {
+      const res = (await enableManaged({})) as { ok?: boolean; error?: string };
+      if (res?.ok) {
+        onComplete();
+      } else {
+        setError(res?.error ?? "Could not enable WaveX-managed connectors.");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setEnabling(false);
+    }
+  };
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -1101,14 +1122,87 @@ function SetupScreen({
           <PlugIcon />
         </div>
         <h2 style={{ fontSize: 22, fontWeight: 600, margin: "0 0 8px", color: TEXT, letterSpacing: "-0.01em" }}>
-          Connect Composio to unlock integrations
+          Activate connectors
         </h2>
         <p style={{ fontSize: 14, color: TEXT_MUTED, lineHeight: 1.55, margin: "0 0 24px" }}>
-          Composio brokers OAuth for 900+ apps — Gmail, Slack, HubSpot,
-          and more. Paste an API key from your Composio dashboard to
-          unlock the connector directory.
+          Composio brokers OAuth for 900+ apps — Gmail, Slack, HubSpot, and more —
+          so your agents act on the right data with the right secrets.
         </p>
 
+        {/* Primary path: WaveX-managed connectors (zero-setup, billed to credits). */}
+        <div
+          style={{
+            border: `1px solid color-mix(in srgb, ${MINT} 35%, transparent)`,
+            background: `color-mix(in srgb, ${MINT} 7%, transparent)`,
+            borderRadius: 12,
+            padding: "18px 18px 20px",
+            marginBottom: 18,
+          }}
+        >
+          <div style={{ fontSize: 15, fontWeight: 600, color: TEXT, marginBottom: 4 }}>
+            Use WaveX-managed connectors
+          </div>
+          <p style={{ fontSize: 13, color: TEXT_MUTED, lineHeight: 1.5, margin: "0 0 14px" }}>
+            Zero setup — connectors are brokered through WaveX and billed to your
+            credits. Recommended for most fleets.
+          </p>
+          <button
+            type="button"
+            onClick={handleManaged}
+            disabled={enabling}
+            style={{
+              width: "100%",
+              padding: "12px 18px",
+              fontSize: 14,
+              fontWeight: 600,
+              borderRadius: 10,
+              border: "none",
+              background: enabling ? SURFACE_ALT : MINT,
+              color: enabling ? TEXT_MUTED : "#0a1a17",
+              cursor: enabling ? "not-allowed" : "pointer",
+              fontFamily: "inherit",
+              transition: "background 150ms ease",
+            }}
+          >
+            {enabling ? "Activating…" : "Use WaveX-managed connectors"}
+          </button>
+          {error && !showByoKey ? (
+            <div
+              role="alert"
+              style={{
+                marginTop: 12,
+                padding: "10px 12px",
+                fontSize: 13,
+                borderRadius: 8,
+                background: "color-mix(in srgb, #ff6b6b 12%, transparent)",
+                border: "1px solid rgba(255,107,107,0.35)",
+                color: "#ffb4b4",
+                lineHeight: 1.5,
+              }}
+            >
+              {error}
+            </div>
+          ) : null}
+        </div>
+
+        {!showByoKey ? (
+          <button
+            type="button"
+            onClick={() => setShowByoKey(true)}
+            style={{
+              background: "none",
+              border: "none",
+              color: TEXT_MUTED,
+              fontSize: 13,
+              cursor: "pointer",
+              padding: 0,
+              textDecoration: "underline",
+              textUnderlineOffset: 3,
+            }}
+          >
+            Or bring your own Composio key →
+          </button>
+        ) : (
         <form onSubmit={handleSubmit}>
           <label
             htmlFor="composio-key"
@@ -1201,6 +1295,7 @@ function SetupScreen({
             Never leaves your machine.
           </div>
         </form>
+        )}
       </div>
     </div>
   );

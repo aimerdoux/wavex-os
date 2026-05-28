@@ -764,6 +764,21 @@ const plugin = definePlugin({
       }
     });
 
+    // Flip into WaveX-managed Composio mode (connectors brokered through
+    // WaveX's account, billed to credits — no key in the browser).
+    ctx.actions.register("connectors-enable-managed", async () => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      try {
+        const r = await localFetch(`${base}/api/connectors/enable-managed`, { method: "POST" });
+        const body = await r.json();
+        if (!r.ok) return { ok: false, status: r.status, error: (body as { error?: string }).error ?? `HTTP ${r.status}` };
+        return body;
+      } catch (err) {
+        return { ok: false, error: String(err) };
+      }
+    });
+
     ctx.data.register("connectors-catalog", async () => {
       const cfg = (await ctx.config.get()) as PluginConfig | null;
       const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
