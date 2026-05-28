@@ -510,6 +510,37 @@ export function registerCredentialRoutes(app: FastifyInstance): void {
     },
   );
 
+  // POST /api/connectors/enable-managed
+  //   Flip this instance into WaveX-managed Composio mode: connectors are
+  //   brokered through WaveX's account (the customer never holds a key) and
+  //   usage bills against their credits. Sets WAVEX_COMPOSIO_MANAGED=1 in
+  //   process.env + <repo>/.env so it survives a restart. The setup-status
+  //   route then reports `managed: true` and the directory skips the
+  //   key-entry screen. If no server-side master key is configured, the
+  //   catalog renders its empty state ("activates with your subscription")
+  //   rather than the BYO-key form — same final UX, no secret in the browser.
+  app.post("/api/connectors/enable-managed", async (_req, reply) => {
+    process.env.WAVEX_COMPOSIO_MANAGED = "1";
+    process.env.WAVEX_COMPOSIO_DISABLED = "0";
+    resetComposioClient();
+    _cachedCatalog = null;
+    const envPath = await resolveRepoEnvPath();
+    try {
+      await writeOrUpdateEnvFile(envPath, {
+        WAVEX_COMPOSIO_MANAGED: "1",
+        WAVEX_COMPOSIO_DISABLED: "0",
+      });
+    } catch (err) {
+      return reply.send({
+        ok: true,
+        managed: true,
+        persisted: false,
+        warning: `Enabled for this session but couldn't write to .env: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    }
+    return reply.send({ ok: true, managed: true, persisted: true });
+  });
+
   /** Full Composio toolkit catalog (live mode) OR FEATURED_TOOLKITS
    *  fallback (disabled mode). The connector directory's "+" cards are
    *  built from this. Cached in-process for 5 min — the catalog is
