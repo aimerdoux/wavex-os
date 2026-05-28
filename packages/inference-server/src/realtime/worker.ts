@@ -37,11 +37,29 @@
 import { createClient, type SupabaseClient, type RealtimeChannel } from "@supabase/supabase-js";
 import { verifyDeviceJwt } from "@wavex-os/auth-shim";
 import {
-  callAnthropicOAuth,
   callAnthropicOAuthRaw,
   inferenceBackend,
   type AnthropicMessagesResponse,
 } from "../lib/anthropic-oauth.js";
+import { runPoolBPromptCoverage } from "../lib/pool-b-prompt-coverage.js";
+import { incrementCounter, setIfAbsent } from "../lib/rate-limit.js";
+import {
+  appendPoolBAuditEvent,
+  isPoolBEnabled,
+  poolBDisabledMessage,
+  poolBIdempotencyTtlSec,
+  poolBProviderMode,
+  poolBRateLimitMaxRequests,
+  poolBRateLimitWindowSec,
+} from "../lib/pool-b-control.js";
+import {
+  buildInferenceAuditRpcBody,
+  parseInferenceRequestMeta,
+  sha256Hex,
+  sha256Json,
+  serializedCharCount,
+  type PoolBRemoteAuditEvent,
+} from "../lib/inference-audit.js";
 
 const REQUEST_TOPIC_PREFIX = "wavex-inference-request:";
 const RESPONSE_TOPIC_PREFIX = "wavex-inference-response:";
@@ -80,12 +98,28 @@ interface RequestPayload {
   model?: unknown;
   max_output_tokens?: unknown;
   purpose?: unknown;
+  session_id?: unknown;
+  conversation_id?: unknown;
+  trace_id?: unknown;
+  client_name?: unknown;
+  client_version?: unknown;
+  source?: unknown;
+  context_input_tokens?: unknown;
+  message_count?: unknown;
 }
 
 interface SubscriptionRow {
   id: string;
   status: string;
   tier?: string;
+}
+
+interface DeviceRow {
+  id: string;
+  user_id: string;
+  status: string;
+  name?: string | null;
+  last_seen_at?: string | null;
 }
 
 // USD per 1M tokens — public list-price table keyed by model id.
@@ -159,12 +193,10 @@ async function writeLedger(
   },
   log: Logger,
 ): Promise<void> {
-  // Fire-and-forget — don't block the response on ledger latency.
   // Routes through public.wavex_os_record_usage (SECURITY DEFINER RPC) because
   // `wavex_os` is not in PostgREST's db-schemas list, so a direct
   // .schema('wavex_os').from('usage_ledger').insert() returns PGRST106.
-  void supabase
-    .rpc("wavex_os_record_usage", {
+  const result = await supabase.rpc("wavex_os_record_usage", {
       p_pool: row.pool,
       p_subscription_id: row.subscription_id,
       p_request_id: row.request_id,
@@ -177,10 +209,105 @@ async function writeLedger(
       p_status: row.status,
       p_device_id: row.device_id ?? null,
       p_error_class: row.error_class ?? null,
-    })
-    .then((r: { error: unknown }) => {
-      if (r.error) log.warn({ err: r.error, request_id: row.request_id }, "usage_ledger insert failed");
     });
+  if (result.error) {
+    log.warn({ err: result.error, request_id: row.request_id }, "usage_ledger insert failed");
+  }
+}
+
+async function writeInferenceAudit(
+  supabase: SupabaseClient,
+  row: PoolBRemoteAuditEvent,
+  log: Logger,
+): Promise<void> {
+  const result = await supabase.rpc(
+    "wavex_os_record_inference_audit",
+    buildInferenceAuditRpcBody(row),
+  );
+  if (result.error) {
+    log.warn({ err: result.error, request_id: row.request_id, attempt_no: row.attempt_no }, "inference audit insert failed");
+  }
+}
+
+async function lookupDevice(
+  supabase: SupabaseClient,
+  subjectId: string,
+  deviceId: string,
+): Promise<{ ok: true; row: DeviceRow } | { ok: false; error: string }> {
+  const { data, error } = await supabase.rpc("wavex_os_device_lookup", {
+    p_user_id: subjectId,
+    p_device_id: deviceId,
+  });
+  if (error) return { ok: false, error: "device_lookup_failed" };
+  const rows = data as DeviceRow[] | null;
+  const row = rows?.[0];
+  if (!row) return { ok: false, error: "device_not_found" };
+  if (row.status === "revoked") return { ok: false, error: "device_revoked" };
+  return { ok: true, row };
+}
+
+async function enforcePoolBControls(args: {
+  route: "realtime" | "anthropic-messages";
+  requestId: string;
+  userId: string;
+  deviceId: string;
+  model: string;
+  started: number;
+}): Promise<{ ok: true } | { ok: false; status: "disabled" | "duplicate" | "rate_limited"; detail: string }> {
+  const { route, requestId, userId, deviceId, model, started } = args;
+
+  if (!isPoolBEnabled()) {
+    await appendPoolBAuditEvent({
+      route,
+      request_id: requestId,
+      user_id: userId,
+      device_id: deviceId,
+      status: "disabled",
+      outcome: "streaming_inference_disabled",
+      duration_ms: Date.now() - started,
+      model,
+      error_class: "maintenance",
+    });
+    return { ok: false, status: "disabled", detail: poolBDisabledMessage() };
+  }
+
+  const duplicateKey = `pool-b:${route}:idempotency:${userId}:${requestId}`;
+  const firstSeen = await setIfAbsent(duplicateKey, poolBIdempotencyTtlSec());
+  if (!firstSeen) {
+    await appendPoolBAuditEvent({
+      route,
+      request_id: requestId,
+      user_id: userId,
+      device_id: deviceId,
+      status: "duplicate",
+      outcome: "duplicate_request",
+      duration_ms: Date.now() - started,
+      model,
+      error_class: "idempotency",
+    });
+    return { ok: false, status: "duplicate", detail: "duplicate_request" };
+  }
+
+  const bucket = Math.floor(Date.now() / (poolBRateLimitWindowSec() * 1000));
+  const rateKey = `pool-b:${route}:rate:${userId}:${deviceId}:${bucket}`;
+  const count = await incrementCounter(rateKey, poolBRateLimitWindowSec() + 60);
+  if (count > poolBRateLimitMaxRequests()) {
+    await appendPoolBAuditEvent({
+      route,
+      request_id: requestId,
+      user_id: userId,
+      device_id: deviceId,
+      status: "rate_limited",
+      outcome: "rate_limited",
+      duration_ms: Date.now() - started,
+      model,
+      error_class: "rate_limit",
+      detail: `count=${count}`,
+    });
+    return { ok: false, status: "rate_limited", detail: "rate_limited" };
+  }
+
+  return { ok: true };
 }
 
 /** Discover user_ids whose channels we should subscribe to. */
@@ -214,6 +341,10 @@ async function handleRequest(args: {
 }): Promise<void> {
   const { supabase, topicUserId, payload, log } = args;
   const started = Date.now();
+  const meta = parseInferenceRequestMeta(payload as Record<string, unknown>, {
+    source: "realtime",
+    client_name: "cloud-client",
+  });
 
   // Parse + shape-validate. Anything malformed gets a warn + ignore so a
   // garbage publish can't crash the worker.
@@ -232,6 +363,7 @@ async function handleRequest(args: {
     log.warn({ topicUserId, hasReqId: !!request_id }, "ignoring malformed realtime request");
     return;
   }
+  const promptHash = sha256Hex(prompt);
 
   // Default response topic is the topic the request arrived on. If the JWT
   // verifies and carries a different sub, prefer that — keeps the response
@@ -258,6 +390,36 @@ async function handleRequest(args: {
   const v = verifyDeviceJwt(device_jwt);
   if (!v.ok || !v.payload) {
     log.warn({ topicUserId, request_id, reason: v.reason }, "device JWT verify failed");
+    await appendPoolBAuditEvent({
+      route: "realtime",
+      request_id,
+      user_id: null,
+      device_id: null,
+      status: "rejected",
+      outcome: "device_jwt_invalid",
+      duration_ms: Date.now() - started,
+      model,
+      error_class: v.reason ?? "auth",
+    });
+    await writeInferenceAudit(
+      supabase,
+      {
+        pool: "B",
+        route: "realtime",
+        request_id,
+        attempt_no: 0,
+        provider: "control-plane",
+        fallback_mode: poolBProviderMode(),
+        status: "rejected",
+        outcome: "device_jwt_invalid",
+        error_class: v.reason ?? "auth",
+        duration_ms: Date.now() - started,
+        prompt_chars: prompt.length,
+        prompt_sha256: promptHash,
+        ...meta,
+      },
+      log,
+    );
     await respond({
       request_id,
       ok: false,
@@ -267,6 +429,100 @@ async function handleRequest(args: {
     return;
   }
   responseUserId = v.payload.sub;
+
+  const poolBControl = await enforcePoolBControls({
+    route: "realtime",
+    requestId: request_id,
+    userId: v.payload.sub,
+    deviceId: v.payload.device_id,
+    model,
+    started,
+  });
+  if (!poolBControl.ok) {
+    await writeInferenceAudit(
+      supabase,
+      {
+        pool: "B",
+        route: "realtime",
+        request_id,
+        attempt_no: 0,
+        user_id: v.payload.sub,
+        device_id: v.payload.device_id,
+        provider: "control-plane",
+        fallback_mode: poolBProviderMode(),
+        model,
+        status:
+          poolBControl.status === "disabled"
+            ? "disabled"
+            : poolBControl.status === "duplicate"
+              ? "duplicate"
+              : "rate_limited",
+        outcome: poolBControl.detail,
+        error_class:
+          poolBControl.status === "disabled"
+            ? "maintenance"
+            : poolBControl.status === "duplicate"
+              ? "idempotency"
+              : "rate_limit",
+        duration_ms: Date.now() - started,
+        prompt_chars: prompt.length,
+        prompt_sha256: promptHash,
+        ...meta,
+      },
+      log,
+    );
+    await respond({
+      request_id,
+      ok: false,
+      error: poolBControl.status === "disabled" ? "internal" : "rate_limited",
+      message: poolBControl.detail,
+    });
+    return;
+  }
+
+  const device = await lookupDevice(supabase, v.payload.sub, v.payload.device_id);
+  if (!device.ok) {
+    await appendPoolBAuditEvent({
+      route: "realtime",
+      request_id,
+      user_id: v.payload.sub,
+      device_id: v.payload.device_id,
+      status: "rejected",
+      outcome: device.error,
+      duration_ms: Date.now() - started,
+      model,
+      error_class: "auth",
+    });
+    await writeInferenceAudit(
+      supabase,
+      {
+        pool: "B",
+        route: "realtime",
+        request_id,
+        attempt_no: 0,
+        user_id: v.payload.sub,
+        device_id: v.payload.device_id,
+        provider: "control-plane",
+        fallback_mode: poolBProviderMode(),
+        model,
+        status: "rejected",
+        outcome: device.error,
+        error_class: "auth",
+        duration_ms: Date.now() - started,
+        prompt_chars: prompt.length,
+        prompt_sha256: promptHash,
+        ...meta,
+      },
+      log,
+    );
+    await respond({
+      request_id,
+      ok: false,
+      error: "no_paired_device",
+      message: device.error,
+    });
+    return;
+  }
 
   // Subscription gating. We capture subscriptionId here regardless of the
   // SKIP_SUB hook so the ledger row can attribute cost to the right sub.
@@ -293,116 +549,259 @@ async function handleRequest(args: {
         { request_id, user_id: v.payload.sub, outcome: errorCode, duration_ms: Date.now() - started },
         "realtime request rejected",
       );
+      await appendPoolBAuditEvent({
+        route: "realtime",
+        request_id,
+        user_id: v.payload.sub,
+        device_id: v.payload.device_id,
+        status: "rejected",
+        outcome: errorCode,
+        duration_ms: Date.now() - started,
+        model,
+        error_class: "auth",
+      });
+      await writeInferenceAudit(
+        supabase,
+        {
+          pool: "B",
+          route: "realtime",
+          request_id,
+          attempt_no: 0,
+          user_id: v.payload.sub,
+          device_id: v.payload.device_id,
+          provider: "control-plane",
+          fallback_mode: poolBProviderMode(),
+          model,
+          status: "rejected",
+          outcome: sub.error,
+          error_class: "auth",
+          duration_ms: Date.now() - started,
+          prompt_chars: prompt.length,
+          prompt_sha256: promptHash,
+          ...meta,
+        },
+        log,
+      );
       return;
     }
     subscriptionId = sub.row.id;
   }
 
-  // Anthropic call (or mock for tests)
-  try {
-    let content = "";
-    let usageInput = 0;
-    let usageOutput = 0;
-    let usageCacheRead = 0;
-    let usageCacheCreate = 0;
-
-    if (process.env.WAVEX_OS_INFERENCE_MOCK === "1") {
-      content = "[MOCK] ok";
-      usageInput = Math.max(1, Math.ceil(prompt.length / 4));
-      usageOutput = 2;
-    } else {
-      if (inferenceBackend() !== "oauth") {
-        await respond({
-          request_id,
-          ok: false,
-          error: "internal",
-          message: "WAVEX_INFERENCE_BACKEND must be oauth for realtime path",
-        });
-        return;
-      }
-      const r = await callAnthropicOAuth({
-        model,
-        max_tokens: maxOut,
-        messages: [{ role: "user", content: prompt }],
-      });
-      content = r.content
-        .map((c) => (c.type === "text" ? (c as { text: string }).text : ""))
-        .join("");
-      usageInput = r.usage.input_tokens;
-      usageOutput = r.usage.output_tokens;
-      usageCacheRead = r.usage.cache_read_input_tokens ?? 0;
-      usageCacheCreate = r.usage.cache_creation_input_tokens ?? 0;
-    }
-
+  if (process.env.WAVEX_OS_INFERENCE_MOCK === "1") {
+    const usageInput = Math.max(1, Math.ceil(prompt.length / 4));
+    const usageOutput = 2;
     const durationMs = Date.now() - started;
-    const costUsd = calcCostUsd(model, {
-      input_tokens: usageInput,
-      output_tokens: usageOutput,
-      cache_read_input_tokens: usageCacheRead,
-      cache_creation_input_tokens: usageCacheCreate,
-    });
-    const costCents = Math.round(costUsd * 100);
-
     await respond({
       request_id,
       ok: true,
-      content,
+      content: "[MOCK] ok",
       model,
+      provider: "mock",
+      provider_response_id: `mock_${request_id}`,
+      fallback_used: false,
       usage: {
         input_tokens: usageInput,
         output_tokens: usageOutput,
-        cached_input_tokens: usageCacheRead,
-        cost_usd: costUsd,
+        cached_input_tokens: 0,
+        cost_usd: 0,
         duration_ms: durationMs,
       },
     });
-
-    // Skip the ledger insert when SKIP_SUB=1: no subscription_id means we
-    // can't attribute cost — better to no-op than to insert a synthetic row.
-    if (subscriptionId) {
-      void writeLedger(
-        supabase,
-        {
-          pool: "B",
-          subscription_id: subscriptionId,
-          request_id,
-          model,
-          prompt_tokens: usageInput,
-          completion_tokens: usageOutput,
-          cache_read_tokens: usageCacheRead,
-          cache_creation_tokens: usageCacheCreate,
-          cost_cents: costCents,
-          status: "ok",
-          device_id: v.payload.device_id,
-        },
-        log,
-      );
-    }
-
+    await writeInferenceAudit(
+      supabase,
+      {
+        pool: "B",
+        route: "realtime",
+        request_id,
+        attempt_no: 1,
+        user_id: v.payload.sub,
+        subscription_id: subscriptionId,
+        device_id: device.row.id,
+        provider: "mock",
+        fallback_mode: poolBProviderMode(),
+        model,
+        status: "accepted",
+        outcome: "ok",
+        duration_ms: durationMs,
+        prompt_chars: prompt.length,
+        prompt_sha256: promptHash,
+        prompt_tokens: usageInput,
+        completion_tokens: usageOutput,
+        cost_cents: 0,
+        ...meta,
+      },
+      log,
+    );
+    await appendPoolBAuditEvent({
+      route: "realtime",
+      request_id,
+      user_id: v.payload.sub,
+      device_id: device.row.id,
+      status: "accepted",
+      outcome: "ok",
+      duration_ms: durationMs,
+      model,
+      cost_cents: 0,
+    });
     log.info(
-      { request_id, user_id: v.payload.sub, outcome: "ok", duration_ms: durationMs, cost_cents: costCents },
+      { request_id, user_id: v.payload.sub, outcome: "ok", duration_ms: durationMs, cost_cents: 0 },
       "realtime request served",
     );
-  } catch (e) {
-    const err = e as { status?: number; message?: string };
-    const isUpstream = typeof err.status === "number" && err.status >= 400 && err.status < 600;
+    return;
+  }
+
+  const result = await runPoolBPromptCoverage({
+    prompt,
+    requestedModel: model,
+    maxTokens: maxOut,
+    metadata: {
+      wavex_request_id: request_id,
+      wavex_route: "realtime",
+      wavex_session_id: meta.session_id ?? "",
+    },
+  });
+
+  for (const attempt of result.attempts) {
+    await writeInferenceAudit(
+      supabase,
+      {
+        pool: "B",
+        route: "realtime",
+        request_id,
+        attempt_no: attempt.attempt_no,
+        user_id: v.payload.sub,
+        subscription_id: subscriptionId,
+        device_id: device.row.id,
+        provider: attempt.provider,
+        fallback_mode: result.provider_mode,
+        fallback_used: attempt.attempt_no > 1,
+        provider_response_id: attempt.provider_response_id,
+        model: attempt.provider_model,
+        status: attempt.ok ? "accepted" : "failed",
+        outcome: attempt.ok ? "ok" : "upstream_error",
+        error_class: attempt.ok
+          ? null
+          : (typeof attempt.error?.status === "number" ? `http_${attempt.error.status}` : attempt.error?.code ?? "upstream"),
+        duration_ms: Date.now() - started,
+        prompt_chars: prompt.length,
+        prompt_sha256: promptHash,
+        prompt_tokens: attempt.usage?.input_tokens ?? null,
+        completion_tokens: attempt.usage?.output_tokens ?? null,
+        cache_read_tokens: attempt.usage?.cache_read_input_tokens ?? 0,
+        cache_creation_tokens: attempt.usage?.cache_creation_input_tokens ?? 0,
+        cost_cents: attempt.cost_cents ?? null,
+        metadata: attempt.ok ? undefined : { error_message: attempt.error?.message ?? "provider_call_failed" },
+        ...meta,
+      },
+      log,
+    );
+  }
+
+  if (!result.ok) {
+    const err = result.last_error;
+    await appendPoolBAuditEvent({
+      route: "realtime",
+      request_id,
+      user_id: v.payload.sub,
+      device_id: device.row.id,
+      status: "failed",
+      outcome: "upstream_error",
+      duration_ms: Date.now() - started,
+      model,
+      error_class: typeof err.status === "number" ? `http_${err.status}` : err.code ?? "upstream",
+      detail: err.message ?? "provider_call_failed",
+    });
     await respond({
       request_id,
       ok: false,
-      error: isUpstream ? "upstream_error" : "internal",
-      message: err.message ?? "anthropic_call_failed",
+      error: "upstream_error",
+      message: err.message ?? "provider_call_failed",
     });
     log.error(
       { err: err.message, request_id, user_id: v.payload.sub, duration_ms: Date.now() - started },
       "realtime request failed",
     );
+    return;
   }
+
+  const success = result.success;
+  const durationMs = Date.now() - started;
+  const costUsd = success.cost_cents === null ? 0 : success.cost_cents / 100;
+
+  await respond({
+    request_id,
+    ok: true,
+    content: success.content,
+    model: success.model,
+    provider: success.provider,
+    provider_response_id: success.provider_response_id,
+    fallback_used: success.fallback_used,
+    usage: {
+      input_tokens: success.usage.input_tokens,
+      output_tokens: success.usage.output_tokens,
+      cached_input_tokens: success.usage.cache_read_input_tokens,
+      cost_usd: costUsd,
+      duration_ms: durationMs,
+    },
+  });
+
+  if (subscriptionId && success.provider === "anthropic_oauth" && success.cost_cents !== null) {
+    await writeLedger(
+      supabase,
+      {
+        pool: "B",
+        subscription_id: subscriptionId,
+        request_id,
+        model: success.model,
+        prompt_tokens: success.usage.input_tokens,
+        completion_tokens: success.usage.output_tokens,
+        cache_read_tokens: success.usage.cache_read_input_tokens,
+        cache_creation_tokens: success.usage.cache_creation_input_tokens,
+        cost_cents: success.cost_cents,
+        status: "ok",
+        device_id: device.row.id,
+      },
+      log,
+    );
+  }
+
+  await appendPoolBAuditEvent({
+    route: "realtime",
+    request_id,
+    user_id: v.payload.sub,
+    device_id: device.row.id,
+    status: "accepted",
+    outcome: success.fallback_used ? "ok_via_fallback" : "ok",
+    duration_ms: durationMs,
+    model: success.model,
+    cost_cents: success.cost_cents ?? undefined,
+  });
+  log.info(
+    {
+      request_id,
+      user_id: v.payload.sub,
+      outcome: success.fallback_used ? "ok_via_fallback" : "ok",
+      duration_ms: durationMs,
+      cost_cents: success.cost_cents ?? 0,
+      provider: success.provider,
+    },
+    "realtime request served",
+  );
 }
 
 interface AnthropicRequestPayload {
   request_id?: unknown;
   device_jwt?: unknown;
   anthropic_request?: unknown;
+  purpose?: unknown;
+  session_id?: unknown;
+  conversation_id?: unknown;
+  trace_id?: unknown;
+  client_name?: unknown;
+  client_version?: unknown;
+  source?: unknown;
+  context_input_tokens?: unknown;
+  message_count?: unknown;
 }
 
 /** Handle a wavex-anthropic-messages-request:<user_id> broadcast.
@@ -418,6 +817,10 @@ async function handleAnthropicRequest(args: {
 }): Promise<void> {
   const { supabase, topicUserId, payload, log } = args;
   const started = Date.now();
+  const meta = parseInferenceRequestMeta(payload as Record<string, unknown>, {
+    source: "anthropic-messages",
+    client_name: "claude-code-proxy",
+  });
 
   const request_id = typeof payload.request_id === "string" ? payload.request_id : null;
   const device_jwt = typeof payload.device_jwt === "string" ? payload.device_jwt : null;
@@ -449,6 +852,18 @@ async function handleAnthropicRequest(args: {
     log.warn({ topicUserId, hasReqId: !!request_id }, "ignoring malformed anthropic-messages request");
     return;
   }
+  const promptChars = serializedCharCount({
+    system: anthropic_request.system ?? null,
+    messages: anthropic_request.messages,
+  });
+  const promptHash = sha256Json({
+    system: anthropic_request.system ?? null,
+    messages: anthropic_request.messages,
+  });
+  const anthropicMeta = {
+    ...meta,
+    message_count: meta.message_count ?? anthropic_request.messages.length,
+  };
 
   let responseUserId = topicUserId;
   const respond = async (body: Record<string, unknown>): Promise<void> => {
@@ -471,6 +886,37 @@ async function handleAnthropicRequest(args: {
   const v = verifyDeviceJwt(device_jwt);
   if (!v.ok || !v.payload) {
     log.warn({ topicUserId, request_id, reason: v.reason }, "device JWT verify failed (anthropic)");
+    await appendPoolBAuditEvent({
+      route: "anthropic-messages",
+      request_id,
+      user_id: null,
+      device_id: null,
+      status: "rejected",
+      outcome: "device_jwt_invalid",
+      duration_ms: Date.now() - started,
+      model: anthropic_request.model,
+      error_class: v.reason ?? "auth",
+    });
+    await writeInferenceAudit(
+      supabase,
+      {
+        pool: "B",
+        route: "anthropic-messages",
+        request_id,
+        attempt_no: 0,
+        provider: "control-plane",
+        fallback_mode: poolBProviderMode(),
+        model: anthropic_request.model,
+        status: "rejected",
+        outcome: "device_jwt_invalid",
+        error_class: v.reason ?? "auth",
+        duration_ms: Date.now() - started,
+        prompt_chars: promptChars,
+        prompt_sha256: promptHash,
+        ...anthropicMeta,
+      },
+      log,
+    );
     await respond({
       request_id,
       ok: false,
@@ -481,6 +927,102 @@ async function handleAnthropicRequest(args: {
     return;
   }
   responseUserId = v.payload.sub;
+
+  const poolBControl = await enforcePoolBControls({
+    route: "anthropic-messages",
+    requestId: request_id,
+    userId: v.payload.sub,
+    deviceId: v.payload.device_id,
+    model: anthropic_request.model,
+    started,
+  });
+  if (!poolBControl.ok) {
+    await writeInferenceAudit(
+      supabase,
+      {
+        pool: "B",
+        route: "anthropic-messages",
+        request_id,
+        attempt_no: 0,
+        user_id: v.payload.sub,
+        device_id: v.payload.device_id,
+        provider: "control-plane",
+        fallback_mode: poolBProviderMode(),
+        model: anthropic_request.model,
+        status:
+          poolBControl.status === "disabled"
+            ? "disabled"
+            : poolBControl.status === "duplicate"
+              ? "duplicate"
+              : "rate_limited",
+        outcome: poolBControl.detail,
+        error_class:
+          poolBControl.status === "disabled"
+            ? "maintenance"
+            : poolBControl.status === "duplicate"
+              ? "idempotency"
+              : "rate_limit",
+        duration_ms: Date.now() - started,
+        prompt_chars: promptChars,
+        prompt_sha256: promptHash,
+        ...anthropicMeta,
+      },
+      log,
+    );
+    await respond({
+      request_id,
+      ok: false,
+      error: poolBControl.status === "disabled" ? "internal" : "rate_limited",
+      error_class: poolBControl.status === "disabled" ? "maintenance" : "rate_limit",
+      message: poolBControl.detail,
+    });
+    return;
+  }
+
+  const device = await lookupDevice(supabase, v.payload.sub, v.payload.device_id);
+  if (!device.ok) {
+    await appendPoolBAuditEvent({
+      route: "anthropic-messages",
+      request_id,
+      user_id: v.payload.sub,
+      device_id: v.payload.device_id,
+      status: "rejected",
+      outcome: device.error,
+      duration_ms: Date.now() - started,
+      model: anthropic_request.model,
+      error_class: "auth",
+    });
+    await writeInferenceAudit(
+      supabase,
+      {
+        pool: "B",
+        route: "anthropic-messages",
+        request_id,
+        attempt_no: 0,
+        user_id: v.payload.sub,
+        device_id: v.payload.device_id,
+        provider: "control-plane",
+        fallback_mode: poolBProviderMode(),
+        model: anthropic_request.model,
+        status: "rejected",
+        outcome: device.error,
+        error_class: "auth",
+        duration_ms: Date.now() - started,
+        prompt_chars: promptChars,
+        prompt_sha256: promptHash,
+        ...anthropicMeta,
+      },
+      log,
+    );
+    await respond({
+      request_id,
+      ok: false,
+      error: "no_paired_device",
+      error_class: "auth",
+      message: device.error,
+    });
+    return;
+  }
 
   // Subscription gating (same as simple-prompt path).
   let subscriptionId: string | null = null;
@@ -502,6 +1044,39 @@ async function handleAnthropicRequest(args: {
           duration_ms: Date.now() - started,
         },
         "anthropic-messages request rejected",
+      );
+      await appendPoolBAuditEvent({
+        route: "anthropic-messages",
+        request_id,
+        user_id: v.payload.sub,
+        device_id: v.payload.device_id,
+        status: "rejected",
+        outcome: "no_active_subscription",
+        duration_ms: Date.now() - started,
+        model: anthropic_request.model,
+        error_class: "auth",
+      });
+      await writeInferenceAudit(
+        supabase,
+        {
+          pool: "B",
+          route: "anthropic-messages",
+          request_id,
+          attempt_no: 0,
+          user_id: v.payload.sub,
+          device_id: v.payload.device_id,
+          provider: "control-plane",
+          fallback_mode: poolBProviderMode(),
+          model: anthropic_request.model,
+          status: "rejected",
+          outcome: "no_active_subscription",
+          error_class: "auth",
+          duration_ms: Date.now() - started,
+          prompt_chars: promptChars,
+          prompt_sha256: promptHash,
+          ...anthropicMeta,
+        },
+        log,
       );
       return;
     }
@@ -571,7 +1146,7 @@ async function handleAnthropicRequest(args: {
     });
 
     if (subscriptionId) {
-      void writeLedger(
+      await writeLedger(
         supabase,
         {
           pool: "B",
@@ -584,12 +1159,53 @@ async function handleAnthropicRequest(args: {
           cache_creation_tokens: u.cache_creation_input_tokens ?? 0,
           cost_cents: costCents,
           status: "ok",
-          device_id: v.payload.device_id,
+          device_id: device.row.id,
         },
         log,
       );
     }
 
+    await writeInferenceAudit(
+      supabase,
+      {
+        pool: "B",
+        route: "anthropic-messages",
+        request_id,
+        attempt_no: 1,
+        user_id: v.payload.sub,
+        subscription_id: subscriptionId,
+        device_id: device.row.id,
+        provider: "anthropic_oauth",
+        fallback_mode: poolBProviderMode(),
+        provider_response_id: anthropicResponse.id,
+        model: anthropicResponse.model,
+        status: "accepted",
+        outcome: "ok",
+        error_class: null,
+        duration_ms: durationMs,
+        prompt_chars: promptChars,
+        prompt_sha256: promptHash,
+        prompt_tokens: u.input_tokens,
+        completion_tokens: u.output_tokens,
+        cache_read_tokens: u.cache_read_input_tokens ?? 0,
+        cache_creation_tokens: u.cache_creation_input_tokens ?? 0,
+        cost_cents: costCents,
+        ...anthropicMeta,
+      },
+      log,
+    );
+
+    await appendPoolBAuditEvent({
+      route: "anthropic-messages",
+      request_id,
+      user_id: v.payload.sub,
+      device_id: device.row.id,
+      status: "accepted",
+      outcome: "ok",
+      duration_ms: durationMs,
+      model: anthropic_request.model,
+      cost_cents: costCents,
+    });
     log.info(
       {
         request_id,
@@ -612,6 +1228,42 @@ async function handleAnthropicRequest(args: {
           : typeof status === "number" && status >= 400 && status < 600
             ? "upstream"
             : "other";
+    await appendPoolBAuditEvent({
+      route: "anthropic-messages",
+      request_id,
+      user_id: v.payload.sub,
+      device_id: device.row.id,
+      status: "failed",
+      outcome: "upstream_error",
+      duration_ms: Date.now() - started,
+      model: anthropic_request.model,
+      error_class,
+      detail: err.message ?? "anthropic_call_failed",
+    });
+    await writeInferenceAudit(
+      supabase,
+      {
+        pool: "B",
+        route: "anthropic-messages",
+        request_id,
+        attempt_no: 1,
+        user_id: v.payload.sub,
+        subscription_id: subscriptionId,
+        device_id: device.row.id,
+        provider: "anthropic_oauth",
+        fallback_mode: poolBProviderMode(),
+        model: anthropic_request.model,
+        status: "failed",
+        outcome: "upstream_error",
+        error_class,
+        duration_ms: Date.now() - started,
+        prompt_chars: promptChars,
+        prompt_sha256: promptHash,
+        metadata: { error_message: err.message ?? "anthropic_call_failed" },
+        ...anthropicMeta,
+      },
+      log,
+    );
     await respond({
       request_id,
       ok: false,
@@ -732,6 +1384,9 @@ export async function startRealtimeWorker(deps: RealtimeWorkerDeps): Promise<Rea
   refreshTimer.unref?.();
 
   log.info({ subscribed_count: channelsByUserId.size }, "realtime worker connected");
+  if (!isPoolBEnabled()) {
+    log.info("realtime worker is in observe-and-reject mode until WAVEX_OS_STREAMING_INFERENCE_ENABLED=1");
+  }
 
   return {
     stop: async () => {
