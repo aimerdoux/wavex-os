@@ -15,6 +15,7 @@ npm install -g pnpm   # if you don't have pnpm yet
 pnpm install
 pnpm test             # run the test suite
 pnpm dev              # runs onboarding-ui + mock-core in parallel
+pnpm clean            # remove dist/ and *.tsbuildinfo artifacts before a fresh install
 ```
 
 Open [http://localhost:5173](http://localhost:5173) — you'll land on Mission Control.

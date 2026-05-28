@@ -23,6 +23,7 @@
     "dev:paperclip:install": "cd packages/core && pnpm install --prefer-offline",
     "dev:wavex-plugin:build": "pnpm --filter @wavex-os/paperclip-plugin-wavex build || echo 'wavex plugin build skipped (typecheck-only mode)'",
     "dev:full": "pnpm dev:everything",
+    "clean": "find . -name 'dist' -not -path '*/node_modules/*' -exec rm -rf {} + ; find . -name '*.tsbuildinfo' -not -path '*/node_modules/*' -delete",
     "build": "pnpm -r --filter \"!./packages/core\" build",
     "ingest:templates": "node scripts/ingest-agency-agents.mjs",
     "lint": "echo 'TODO: eslint'",
