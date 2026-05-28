@@ -48,7 +48,11 @@ export function githubCiWebhookRoutes(db: Db) {
   //   Secret: value of GITHUB_WEBHOOK_SECRET env var
   //   Events: Workflow runs
   router.post("/:companyId", async (req: Request, res: Response) => {
-    const { companyId } = req.params;
+    const companyId = firstParamValue(req.params.companyId);
+    if (!companyId) {
+      res.status(400).json({ error: "missing companyId" });
+      return;
+    }
     const event = req.headers["x-github-event"] as string | undefined;
     const secret = process.env.GITHUB_WEBHOOK_SECRET;
 
@@ -120,7 +124,7 @@ async function resolveUserId(db: Db, companyId: string, githubLogin: string | un
 
   // Look for a company member whose name or email matches the GitHub login.
   const members = await db
-    .select({ userId: companyMemberships.userId })
+    .select({ userId: companyMemberships.principalId })
     .from(companyMemberships)
     .where(eq(companyMemberships.companyId, companyId))
     .limit(50);
@@ -169,4 +173,10 @@ interface GitHubWorkflowRunPayload {
     actor?: { login: string };
   };
   repository?: { full_name: string };
+}
+
+function firstParamValue(value: string | string[] | undefined): string | null {
+  if (typeof value === "string" && value.length > 0) return value;
+  if (Array.isArray(value)) return value.find((item) => item.length > 0) ?? null;
+  return null;
 }
