@@ -693,6 +693,35 @@ const plugin = definePlugin({
       }
     });
 
+    // Device pairing — lets the operator pair this Mac to their
+    // wavexcard.com account from inside the Pool B Health widget instead
+    // of running `wavex-os login` in a terminal. pair-start kicks off the
+    // RFC-8628 device flow; pair-status is polled until phase === "paired".
+    ctx.actions.register("pool-b-pair-start", async () => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      try {
+        const r = await localFetch(`${base}/api/pool-b-health/pair-start`, { method: "POST" });
+        const body = await r.json();
+        if (!r.ok) return { ok: false, status: r.status, error: (body as { error?: string }).error ?? `HTTP ${r.status}` };
+        return body;
+      } catch (err) {
+        return { ok: false, error: String(err) };
+      }
+    });
+
+    ctx.data.register("pool-b-pair-status", async () => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      try {
+        const r = await localFetch(`${base}/api/pool-b-health/pair-status`);
+        if (!r.ok) return { ok: false, status: r.status, phase: "idle" };
+        return await r.json();
+      } catch (err) {
+        return { ok: false, error: String(err), phase: "idle" };
+      }
+    });
+
     // -------------------------------------------------------------------
     // Mission Control · Connectors directory (v0.8.0).
     //

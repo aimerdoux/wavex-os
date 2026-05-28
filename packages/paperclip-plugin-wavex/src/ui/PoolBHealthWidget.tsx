@@ -10,8 +10,8 @@
  *  All endpoints are board-gated server-side. Polling is 30s aligned to
  *  the server-side cache TTL — refresh button bypasses the cache. */
 
-import { useEffect, useState } from "react";
-import { usePluginData, type PluginWidgetProps } from "@wavex-os/plugin-sdk-shim/ui";
+import { useEffect, useRef, useState } from "react";
+import { usePluginAction, usePluginData, type PluginWidgetProps } from "@wavex-os/plugin-sdk-shim/ui";
 
 const WAVEX_COLOR = "#00d4ff";
 const GOOD_COLOR = "#00d97e";
@@ -147,6 +147,9 @@ export function PoolBHealthWidget(_props: PluginWidgetProps) {
           ↻
         </button>
       </div>
+
+      {/* Pair this Mac — RFC-8628 device flow, no terminal needed. */}
+      <PairDevicePanel hasOnlineDevice={onlineDevices > 0} onPaired={() => setFresh((n) => n + 1)} />
 
       {/* Headline row — 4 numbers */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginBottom: 12 }}>
@@ -368,6 +371,140 @@ function LifeBar({ valueUsd, softCapUsd }: { valueUsd: number; softCapUsd: numbe
         background: color,
         transition: "width 0.3s ease, background 0.3s ease",
       }} />
+    </div>
+  );
+}
+
+interface PairStatus {
+  ok: boolean;
+  phase: "idle" | "pending" | "paired" | "error";
+  user_code?: string;
+  verification_url?: string;
+  user_id?: string;
+  device_id?: string;
+  error?: string;
+}
+
+/** "Pair this Mac" panel — runs the device flow without a terminal.
+ *  Click → server issues a user_code + verification URL → operator
+ *  authorizes in the browser → this panel polls until the token bundle
+ *  lands on disk, then flips to "paired". */
+function PairDevicePanel({ hasOnlineDevice, onPaired }: { hasOnlineDevice: boolean; onPaired: () => void }) {
+  const startPair = usePluginAction("pool-b-pair-start");
+  const [tick, setTick] = useState(0);
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
+  const status = usePluginData<PairStatus>("pool-b-pair-status", { t: String(tick) });
+  const phase = status.data?.phase ?? "idle";
+  const wasPaired = useRef(false);
+
+  // Poll status every 2s while a pairing is in flight.
+  useEffect(() => {
+    if (phase !== "pending") return;
+    const id = window.setInterval(() => setTick((n) => n + 1), 2_000);
+    return () => window.clearInterval(id);
+  }, [phase]);
+
+  // Bubble a refresh up to the parent the moment we transition to paired,
+  // so the Devices table reflects the new device without a manual refresh.
+  useEffect(() => {
+    if (phase === "paired" && !wasPaired.current) {
+      wasPaired.current = true;
+      onPaired();
+    }
+    if (phase !== "paired") wasPaired.current = false;
+  }, [phase, onPaired]);
+
+  const begin = async () => {
+    setStarting(true);
+    setStartError(null);
+    try {
+      const res = (await startPair({})) as { ok?: boolean; error?: string };
+      if (!res?.ok) setStartError(res?.error ?? "Could not start pairing.");
+      setTick((n) => n + 1);
+    } catch (err) {
+      setStartError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setStarting(false);
+    }
+  };
+
+  const box: React.CSSProperties = {
+    marginBottom: 12, padding: "10px 12px",
+    border: "1px solid rgba(255,255,255,0.08)", borderRadius: 6,
+  };
+
+  if (phase === "paired") {
+    return (
+      <div style={box}>
+        <span style={{ color: GOOD_COLOR, fontWeight: 600 }}>✓ This Mac is paired</span>
+        {status.data?.user_id && (
+          <span style={{ opacity: 0.6, marginLeft: 8, fontSize: 11 }}>
+            user {status.data.user_id.slice(0, 8)}… · device {status.data.device_id?.slice(0, 8) ?? "?"}…
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  if (phase === "pending" && status.data?.user_code) {
+    return (
+      <div style={box}>
+        <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", opacity: 0.55, marginBottom: 6 }}>
+          Pair this Mac · waiting for authorization
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <code style={{ fontSize: 18, fontWeight: 700, color: WAVEX_COLOR, letterSpacing: "0.12em" }}>
+            {status.data.user_code}
+          </code>
+          {status.data.verification_url && (
+            <a
+              href={status.data.verification_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ fontSize: 12, color: WAVEX_COLOR, textDecoration: "none", border: `1px solid ${WAVEX_COLOR}`, borderRadius: 4, padding: "4px 10px" }}
+            >
+              Open authorization page →
+            </a>
+          )}
+          <span style={{ fontSize: 11, opacity: 0.55 }}>polling…</span>
+        </div>
+        <div style={{ fontSize: 10, opacity: 0.5, marginTop: 6 }}>
+          Sign in on wavexcard.com if prompted, then click "Pair this device". This panel flips to ✓ automatically.
+        </div>
+      </div>
+    );
+  }
+
+  // idle or error
+  return (
+    <div style={box}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+        <span style={{ fontSize: 12, opacity: 0.75 }}>
+          {hasOnlineDevice
+            ? "A Mac is already serving Pool B. Re-pair only if you're switching machines."
+            : "No Mac is paired. Pair this machine to start serving Pool B inference."}
+        </span>
+        <button
+          type="button"
+          onClick={begin}
+          disabled={starting}
+          style={{
+            flexShrink: 0, fontSize: 12, fontWeight: 600,
+            padding: "6px 14px", borderRadius: 6, border: "none",
+            background: starting ? "rgba(255,255,255,0.1)" : WAVEX_COLOR,
+            color: starting ? DIM : "#04212b",
+            cursor: starting ? "not-allowed" : "pointer",
+          }}
+        >
+          {starting ? "Starting…" : "Pair this Mac"}
+        </button>
+      </div>
+      {(startError || (phase === "error" && status.data?.error)) && (
+        <div style={{ marginTop: 8, fontSize: 11, color: DANGER_COLOR }}>
+          {startError ?? status.data?.error}
+        </div>
+      )}
     </div>
   );
 }

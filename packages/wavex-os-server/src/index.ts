@@ -19,6 +19,7 @@ import { registerInstanceRoutes } from "./routes/instance.js";
 import { registerInferenceAllocationRoute } from "./routes/inference-allocation.js";
 import { registerObservabilityRoutes } from "./routes/observability.js";
 import { registerPoolBHealthRoutes } from "./routes/pool-b-health.js";
+import { registerDevicePairingRoutes } from "./routes/device-pairing.js";
 import { registerPillar5TestSendRoute } from "./routes/pillar5-test-send.js";
 import { registerCredentialRoutes } from "./routes/credentials.js";
 import { registerRegenerateImprintRoute } from "./routes/regenerate-imprint.js";
@@ -78,6 +79,7 @@ export function registerWavexOsRoutes(app: FastifyInstance): void {
   registerInferenceAllocationRoute(app);
   registerObservabilityRoutes(app);
   registerPoolBHealthRoutes(app);
+  registerDevicePairingRoutes(app);
   registerPillar5TestSendRoute(app);
   registerCredentialRoutes(app);
   registerRegenerateImprintRoute(app);
