@@ -64,6 +64,13 @@
       "when": 1747500005000,
       "tag": "0011_kpi_snapshots",
       "breakpoints": false
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1747500006000,
+      "tag": "0012_deliverable_git",
+      "breakpoints": false
     }
   ]
 }

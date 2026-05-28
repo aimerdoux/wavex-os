@@ -177,6 +177,11 @@ export interface Deliverable {
   sizeBytes: number;
   contentHash: string;
 
+  // Git-first verifiability — the artifact is committed to a per-company
+  // deliverables repo; commitSha is the proof, gitRef the branch/ref.
+  commitSha?: string;
+  gitRef?: string;
+
   // What it is
   title: string;
   description: string;
@@ -204,7 +209,12 @@ export type DeliverableStatus =
   | "in_review"
   | "approved"
   | "rejected"
-  | "published";
+  | "published"
+  // Git-artifact integrity outcomes (matches the cloud deliverable_ledger
+  // vocabulary): `verified` = commit resolves + content hash matches;
+  // `failed` = verification could not confirm the artifact.
+  | "verified"
+  | "failed";
 
 export type DeliverableKind =
   | "document"
@@ -349,6 +359,7 @@ export type ActivityEventKind =
   | "deliverable_revised"
   | "deliverable_approved"
   | "deliverable_published"
+  | "deliverable_verified"
   // Node lifecycle
   | "node_paused"
   | "node_resumed"
