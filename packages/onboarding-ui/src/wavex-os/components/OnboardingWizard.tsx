@@ -31,6 +31,10 @@ const STEPS = [
   },
 ];
 
+function wizardDocumentTitle(step: number): string {
+  return `WaveX OS — ${STEPS[step - 1]?.title ?? "Onboarding"}`;
+}
+
 // ─── step 3 sub-state ────────────────────────────────────────────────────────
 
 type Step3Kind = "idle" | "running" | "done" | "timed_out" | "aborted";
@@ -369,6 +373,14 @@ export function OnboardingWizard() {
   const step1Valid = Boolean(selectedRepo);
   const step2Valid =
     platformTarget.platform !== null && platformTarget.identifier.trim().length > 0;
+
+  useEffect(() => {
+    if (!visible) return;
+    document.title = wizardDocumentTitle(step);
+    return () => {
+      document.title = "WaveX OS";
+    };
+  }, [step, visible]);
 
   const handleNext = useCallback(async () => {
     if (step === 2) savePlatformTarget(platformTarget);
