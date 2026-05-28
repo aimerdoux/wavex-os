@@ -222,7 +222,43 @@ export function registerActivateRoute(app: FastifyInstance): void {
       // handoff fires. Self-heals without requiring a wavex restart.
       const { detectAndConfigurePaperclip } = await import("../lib/paperclip-detect.js");
       await detectAndConfigurePaperclip();
-      const handoff = await handoffToPaperclip(manifest, companyId).catch((e) => ({
+
+      // G1 — quota pre-flight. Spawning the full C-Suite as live Paperclip
+      // agents means N concurrent claude heartbeats. If the model bucket
+      // the fleet uses is already exhausted, every one of those fails with
+      // "You've hit your <model> limit" (observed 2026-05-19: 35 agents →
+      // 50 doomed runs). The DB bridge above already ran (agents exist +
+      // are recoverable), so we gate ONLY the live handoff: probe the
+      // fleet model with a 1-token canary, and if it's a hard ceiling,
+      // skip the spawn and tell the operator when it resets. Opt out with
+      // WAVEX_AGENT_QUOTA_PREFLIGHT=0. Transient 429s do NOT block — the
+      // heartbeat retry/backoff handles those.
+      let quotaSkip: { model: string; detail: string; resetHint: string | null } | null = null;
+      if (process.env.WAVEX_AGENT_QUOTA_PREFLIGHT !== "0") {
+        const { probeClaudeQuota, fleetAgentModel } = await import("../lib/claude-quota-preflight.js");
+        const model = fleetAgentModel();
+        const probe = await probeClaudeQuota(model).catch(() => null);
+        if (probe?.state === "exhausted") {
+          quotaSkip = { model, detail: probe.detail, resetHint: probe.resetHint };
+        }
+      }
+
+      const handoff = quotaSkip
+        ? {
+            enabled: true,
+            paperclipUrl: process.env.PAPERCLIP_HANDOFF_URL ?? null,
+            paperclipCompanyId: null,
+            created: [],
+            skipped: [],
+            errors: [{
+              slot: "<quota-preflight>",
+              message:
+                `Live agent handoff skipped — ${quotaSkip.detail}. Agents are hired in the DB and recoverable; ` +
+                `re-run activate once quota resets, or set WAVEX_AGENT_MODEL to a model with headroom ` +
+                `(e.g. opus) and retry. Set WAVEX_AGENT_QUOTA_PREFLIGHT=0 to bypass this check.`,
+            }],
+          }
+        : await handoffToPaperclip(manifest, companyId).catch((e) => ({
         enabled: true,
         paperclipUrl: process.env.PAPERCLIP_HANDOFF_URL ?? null,
         paperclipCompanyId: null,
