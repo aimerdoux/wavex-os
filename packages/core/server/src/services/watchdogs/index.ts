@@ -1,0 +1,37 @@
+export {
+  defaultWatchdogRules,
+  createDeliverableMissingWatchdogRule,
+  createQuotaAndCostWatchdogRule,
+  createRunLivenessWatchdogRule,
+} from "./defaults.js";
+export {
+  WatchdogRegistry,
+  createWatchdogRegistry,
+  snapshotWatchdogRegistry,
+  type EvaluateWatchdogSignalOptions,
+} from "./registry.js";
+export type {
+  BudgetThresholdCrossedSignal,
+  CostAnomalySignal,
+  DeliverableExpectation,
+  DeliverableMissingSignal,
+  DeliverableValidationFailedSignal,
+  ExecutionContract,
+  ExecutionContractScope,
+  ExecutionContractScopeKind,
+  ExecutionEscalationPolicy,
+  ExecutionProfile,
+  ExecutionProfileFallbackPolicy,
+  ExecutionProfileTarget,
+  RunCompletedSignal,
+  RunFailedSignal,
+  RunSilentSignal,
+  WatchdogAction,
+  WatchdogActionType,
+  WatchdogDecision,
+  WatchdogEvaluationContext,
+  WatchdogRule,
+  WatchdogSeverity,
+  WatchdogSignal,
+  WatchdogSignalType,
+} from "./types.js";
