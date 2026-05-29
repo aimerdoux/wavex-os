@@ -31,6 +31,10 @@ import {
   type WriteDeliverableInput,
 } from "../mission-control/deliverables.js";
 import {
+  reconcileDeliverables,
+  fetchCompletedIssuesForCompany,
+} from "../mission-control/reconcile-deliverables.js";
+import {
   announceDueImpacts,
   declareKpiImpact,
   getScoreboard,
@@ -665,6 +669,45 @@ export function registerMissionControlRoutes(app: FastifyInstance): void {
         status: result.status,
         reason: result.reason ?? null,
         deliverable: result.deliverable,
+      };
+    } catch (e) {
+      if (e instanceof AuthError)
+        return reply.status(e.statusCode).send({ error: e.message });
+      return reply.status(503).send({ ok: false, error: e instanceof Error ? e.message : String(e) });
+    }
+  });
+
+  // ── POST /api/mission-control/:companyId/reconcile-deliverables ───────
+  // Auto-producer trigger: scan the company's completed Paperclip issues
+  // for `wavex-artifact` blocks and materialize any that don't yet have a
+  // deliverable (git-committed via writeDeliverable). Idempotent. Intended
+  // to be called by the Liaison heartbeat or a cron; safe to call anytime
+  // (no completed issues with blocks → zero created).
+  app.post("/api/mission-control/:companyId/reconcile-deliverables", async (req, reply) => {
+    const ar = authReq(req);
+    try {
+      assertBoard(ar);
+    } catch (e) {
+      if (e instanceof AuthError)
+        return reply.status(e.statusCode).send({ error: e.message });
+      throw e;
+    }
+    const { companyId } = req.params as { companyId: string };
+    assertCompanyAccess(ar, companyId);
+    await ensureBootstrap();
+    try {
+      const issues = await fetchCompletedIssuesForCompany(companyId);
+      const result = await reconcileDeliverables({
+        companyId,
+        instanceId: companyId,
+        issues,
+      });
+      return {
+        ok: true,
+        scanned: issues.length,
+        created: result.created,
+        skipped: result.skipped,
+        errors: result.errors,
       };
     } catch (e) {
       if (e instanceof AuthError)
