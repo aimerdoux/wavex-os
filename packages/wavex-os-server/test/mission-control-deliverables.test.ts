@@ -145,7 +145,7 @@ describe("git-first deliverable artifact", () => {
     expect(() =>
       execFileSync("git", ["cat-file", "-e", `${d.commitSha}^{commit}`], { cwd: dir }),
     ).not.toThrow();
-    const tree = execFileSync("git", ["show", "--stat", "--oneline", d.commitSha], {
+    const tree = execFileSync("git", ["show", "--stat", "--oneline", d.commitSha!], {
       cwd: dir,
       encoding: "utf8",
     });
