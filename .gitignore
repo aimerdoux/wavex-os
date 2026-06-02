@@ -81,3 +81,5 @@ supabase/.temp/
 
 # Operator-local QA spec fixtures (not shipped in customer installs)
 e2e/_qa-*.spec.ts
+
+demo-output/

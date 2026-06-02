@@ -38,6 +38,7 @@ import {
   type DeclareKpiImpactInput,
 } from "../mission-control/kpi-impacts.js";
 import { sampleAllKpis } from "../mission-control/kpi-sampler.js";
+import { sampleInboundQuality } from "../mission-control/inbound-quality-sampler.js";
 import {
   buildImpactGraph,
   buildImpactSummary,
@@ -152,6 +153,42 @@ function parseDate(raw: unknown): Date | undefined {
   if (typeof raw !== "string" || raw.length === 0) return undefined;
   const d = new Date(raw);
   return Number.isNaN(d.getTime()) ? undefined : d;
+}
+
+async function postInboundQualityBoardAlert(
+  alerts: Array<{ channel: string; unknownShare: number }>,
+  windowEnd: string,
+): Promise<void> {
+  const token = process.env.TELEGRAM_BOT_TOKEN ?? process.env.WAVEX_OPS_TELEGRAM_BOT_TOKEN;
+  const chat = process.env.TELEGRAM_CHAT_ID ?? process.env.WAVEX_OPS_TELEGRAM_CHAT_ID;
+  if (!token || !chat) {
+    console.warn("[inbound-quality] Telegram credentials not set — board alert skipped");
+    return;
+  }
+  const lines = alerts.map(
+    (a) =>
+      `[inbound-quality] channel=${a.channel} unknown_share=${(a.unknownShare * 100).toFixed(1)}% week_ending=${windowEnd}`,
+  );
+  const text = lines.join("\n");
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 10_000);
+    const res = await fetch(`https://api.telegram.org/bot${encodeURIComponent(token)}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chat, text }),
+      signal: ctrl.signal,
+    });
+    clearTimeout(t);
+    if (!res.ok) {
+      const detail = await res.text().catch(() => "");
+      console.error(`[inbound-quality] Telegram alert failed: ${res.status} ${detail}`);
+    }
+  } catch (e) {
+    console.error(
+      `[inbound-quality] Telegram alert error: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
 }
 
 export function registerMissionControlRoutes(app: FastifyInstance): void {
@@ -762,6 +799,38 @@ export function registerMissionControlRoutes(app: FastifyInstance): void {
       await ensureBootstrap();
       try {
         const result = await sampleAllKpis(companyId);
+        return { ok: true, ...result };
+      } catch (e) {
+        return reply.status(503).send({
+          ok: false,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
+    },
+  );
+
+  // WAVAAAAA-245 — inbound-quality scoreboard tick.
+  // Writes per-source inbound-quality rows + per-channel unknown-share rows,
+  // then forwards any unknown_share > 10% channel to the Telegram board.
+  app.post(
+    "/api/mission-control/:companyId/sample-inbound-quality",
+    async (req, reply) => {
+      const ar = authReq(req);
+      try {
+        assertBoard(ar);
+      } catch (e) {
+        if (e instanceof AuthError)
+          return reply.status(e.statusCode).send({ error: e.message });
+        throw e;
+      }
+      const { companyId } = req.params as { companyId: string };
+      assertCompanyAccess(ar, companyId);
+      await ensureBootstrap();
+      try {
+        const result = await sampleInboundQuality(companyId);
+        if (result.unknownShareAlerts.length > 0) {
+          await postInboundQualityBoardAlert(result.unknownShareAlerts, result.windowEnd);
+        }
         return { ok: true, ...result };
       } catch (e) {
         return reply.status(503).send({

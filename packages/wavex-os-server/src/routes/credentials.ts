@@ -564,6 +564,7 @@ export function registerCredentialRoutes(app: FastifyInstance): void {
       slug: t.slug,
       name: t.displayName,
       category: t.category,
+      logo: t.logo,
     }));
     _cachedCatalog = { ts: now, rows: fallback, source: "curated" };
     return reply.send({ ok: true, rows: fallback, source: "curated", cached: false });
