@@ -46,6 +46,12 @@ export const deliverables = pgTable(
     sizeBytes: bigint("size_bytes", { mode: "number" }).notNull().default(0),
     contentHash: text("content_hash").notNull().default(""),
 
+    // Git-first verifiability — the artifact is committed to a per-company
+    // deliverables repo so `git -C <dir> show <commit_sha>` is the proof.
+    // commitSha is the canonical content-address; gitRef is the branch/ref.
+    commitSha: text("commit_sha").notNull().default(""),
+    gitRef: text("git_ref").notNull().default(""),
+
     // What it is
     title: text("title").notNull(),
     description: text("description").notNull().default(""),

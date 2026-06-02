@@ -1,7 +1,9 @@
 /** Mission Control Deliverables — write + query round-trip. */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync, readFileSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { _resetDbCache, runMigrations } from "@wavex-os/db";
@@ -9,6 +11,7 @@ import {
   writeDeliverable,
   queryDeliverables,
   deliverableFolder,
+  verifyDeliverable,
 } from "../src/mission-control/deliverables.js";
 import {
   _resetActivityBusForTesting,
@@ -115,5 +118,84 @@ describe("writeDeliverable", () => {
     expect(f).not.toBeNull();
     expect(f!.diskPath).toBe(d.diskPath);
     expect(f!.folder).toMatch(/deliverables$/);
+  });
+});
+
+describe("git-first deliverable artifact", () => {
+  it("commits the artifact and the commit resolves via git", async () => {
+    const d = await writeDeliverable({
+      companyId: "co-git",
+      instanceId: "co-git",
+      modeContext: "solo_founder",
+      taskRefType: "issue",
+      taskRefId: "WAV-100",
+      producedByNodeId: "agent-cmo",
+      kind: "document",
+      title: "Q3 campaign brief",
+      payload: { body: "Launch the autumn line via IG + email." },
+    });
+
+    // commit_sha is recorded (git sha1 = 40 hex, sha256 = 64 hex).
+    expect(d.commitSha).toMatch(/^[a-f0-9]{40,64}$/);
+    expect(d.gitRef).toBe("main");
+
+    // The recorded commit resolves in the deliverables repo, and the file
+    // is part of that commit.
+    const dir = dirname(d.diskPath);
+    expect(() =>
+      execFileSync("git", ["cat-file", "-e", `${d.commitSha}^{commit}`], { cwd: dir }),
+    ).not.toThrow();
+    const tree = execFileSync("git", ["show", "--stat", "--oneline", d.commitSha!], {
+      cwd: dir,
+      encoding: "utf8",
+    });
+    expect(tree).toContain(d.relPath);
+  });
+
+  it("verifyDeliverable flips a clean artifact to verified", async () => {
+    const received: string[] = [];
+    subscribeMissionControlEvents((e) => received.push(e.kind));
+
+    const d = await writeDeliverable({
+      companyId: "co-v",
+      instanceId: "co-v",
+      modeContext: "solo_founder",
+      taskRefType: "issue",
+      taskRefId: "WAV-200",
+      producedByNodeId: "agent-strategy",
+      kind: "document",
+      title: "GTM plan",
+      payload: { body: "Plan body." },
+    });
+
+    const result = await verifyDeliverable(d.id, "reviewer-cto");
+    expect(result).not.toBeNull();
+    expect(result!.ok).toBe(true);
+    expect(result!.status).toBe("verified");
+    expect(result!.deliverable.status).toBe("verified");
+    expect(result!.deliverable.reviewedByNodeId).toBe("reviewer-cto");
+    expect(received).toContain("deliverable_verified");
+  });
+
+  it("verifyDeliverable fails when the on-disk artifact is tampered", async () => {
+    const d = await writeDeliverable({
+      companyId: "co-t",
+      instanceId: "co-t",
+      modeContext: "solo_founder",
+      taskRefType: "issue",
+      taskRefId: "WAV-300",
+      producedByNodeId: "agent-x",
+      kind: "document",
+      title: "Tamper test",
+      payload: { body: "original" },
+    });
+
+    // Mutate the artifact on disk after it was recorded + committed.
+    writeFileSync(d.diskPath, JSON.stringify({ tampered: true }), "utf8");
+
+    const result = await verifyDeliverable(d.id, undefined);
+    expect(result!.ok).toBe(false);
+    expect(result!.status).toBe("failed");
+    expect(result!.reason).toMatch(/hash mismatch/i);
   });
 });

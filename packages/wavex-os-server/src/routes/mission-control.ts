@@ -25,7 +25,10 @@ import {
   deliverableFolder,
   getDeliverable,
   queryDeliverables,
+  writeDeliverable,
+  verifyDeliverable,
   type QueryDeliverablesInput,
+  type WriteDeliverableInput,
 } from "../mission-control/deliverables.js";
 import {
   announceDueImpacts,
@@ -576,6 +579,97 @@ export function registerMissionControlRoutes(app: FastifyInstance): void {
         ok: false,
         error: e instanceof Error ? e.message : String(e),
       });
+    }
+  });
+
+  // ── POST /api/mission-control/deliverable ─────────────────────────────
+  // Producer write-path: an agent run records its output as a git-committed,
+  // verifiable artifact. Body must carry the task linkage + the artifact
+  // (payload). writeDeliverable() commits it to the company's deliverables
+  // repo and returns the row + commit_sha.
+  app.post("/api/mission-control/deliverable", async (req, reply) => {
+    const ar = authReq(req);
+    try {
+      assertBoard(ar);
+    } catch (e) {
+      if (e instanceof AuthError)
+        return reply.status(e.statusCode).send({ error: e.message });
+      throw e;
+    }
+    const body = (req.body ?? {}) as Partial<WriteDeliverableInput>;
+    const missing = (["instanceId", "taskRefId", "producedByNodeId", "kind", "title"] as const).filter(
+      (k) => !body[k],
+    );
+    if (missing.length) {
+      return reply.status(400).send({ ok: false, error: `missing required fields: ${missing.join(", ")}` });
+    }
+    assertCompanyAccess(ar, body.instanceId as string);
+    await ensureBootstrap();
+    try {
+      const deliverable = await writeDeliverable({
+        companyId: body.companyId ?? (body.instanceId as string),
+        instanceId: body.instanceId as string,
+        modeContext: body.modeContext ?? "solo_founder",
+        taskRefType: body.taskRefType ?? "issue",
+        taskRefId: body.taskRefId as string,
+        producedByNodeId: body.producedByNodeId as string,
+        kind: body.kind as WriteDeliverableInput["kind"],
+        title: body.title as string,
+        description: body.description,
+        previewText: body.previewText,
+        mimeType: body.mimeType,
+        payload: body.payload,
+        templateUsed: body.templateUsed,
+        promptUsedRef: body.promptUsedRef,
+        expectedKpiImpactId: body.expectedKpiImpactId,
+        filename: body.filename,
+        taskRef: body.taskRef,
+        plainLanguageSentence: body.plainLanguageSentence,
+      });
+      return { ok: true, deliverable, commit_sha: deliverable.commitSha ?? null };
+    } catch (e) {
+      if (e instanceof AuthError)
+        return reply.status(e.statusCode).send({ error: e.message });
+      return reply.status(503).send({ ok: false, error: e instanceof Error ? e.message : String(e) });
+    }
+  });
+
+  // ── POST /api/mission-control/deliverable/:id/verify ──────────────────
+  // Confirms the recorded commit resolves in the deliverables repo AND the
+  // on-disk artifact still hashes to contentHash. Flips status verified /
+  // failed. This is what turns "the fleet ran" into "the output is real".
+  app.post("/api/mission-control/deliverable/:id/verify", async (req, reply) => {
+    const ar = authReq(req);
+    try {
+      assertBoard(ar);
+    } catch (e) {
+      if (e instanceof AuthError)
+        return reply.status(e.statusCode).send({ error: e.message });
+      throw e;
+    }
+    const { id } = req.params as { id: string };
+    const body = (req.body ?? {}) as { reviewerNodeId?: string };
+    await ensureBootstrap();
+    try {
+      const existing = await getDeliverable(id);
+      if (!existing) {
+        return reply.status(404).send({ ok: false, error: "not found" });
+      }
+      assertCompanyAccess(ar, existing.instanceId);
+      const result = await verifyDeliverable(id, body.reviewerNodeId);
+      if (!result) {
+        return reply.status(404).send({ ok: false, error: "not found" });
+      }
+      return {
+        ok: result.ok,
+        status: result.status,
+        reason: result.reason ?? null,
+        deliverable: result.deliverable,
+      };
+    } catch (e) {
+      if (e instanceof AuthError)
+        return reply.status(e.statusCode).send({ error: e.message });
+      return reply.status(503).send({ ok: false, error: e instanceof Error ? e.message : String(e) });
     }
   });
 
