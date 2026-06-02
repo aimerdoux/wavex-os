@@ -863,7 +863,16 @@ async function hireOne(
       // the repo-versioned default is the safe fallback for every fresh fleet.
       command: process.env.PAPERCLIP_HANDOFF_WRAPPER
         ?? join(resolveRepoRoot(), "scripts", "ops", "claude-keychain-wrapper.sh"),
-      model: "claude-sonnet-4-6",
+      // Model is operator-tunable via WAVEX_AGENT_MODEL. Default stays
+      // sonnet for cost, BUT the operator's Max plan tracks per-model
+      // sub-limits (5h / weekly / "Sonnet only") independently. When the
+      // Sonnet bucket is exhausted while "all models" weekly still has
+      // headroom, every agent heartbeat fails with "You've hit your
+      // Sonnet limit" even though overall quota is fine (observed
+      // 2026-05-19 dogfood deploy — 50 runs failed on a Sonnet ceiling
+      // at 25% weekly). Setting WAVEX_AGENT_MODEL=opus (or any model with
+      // remaining quota) unblocks the fleet without waiting for reset.
+      model: process.env.WAVEX_AGENT_MODEL ?? "claude-sonnet-4-6",
       dangerouslySkipPermissions: true,
       timeoutSec: 600,
       graceSec: 30,

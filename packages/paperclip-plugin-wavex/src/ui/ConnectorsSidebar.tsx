@@ -609,20 +609,28 @@ function DirectoryModal({
               Checking Composio…
             </div>
           ) : (!setupStatus.data?.valid && !setupStatus.data?.managed) ? (
-            // SetupScreen only renders when there's something the *user*
-            // can do — paste a key. In WaveX-managed mode (operator runs
-            // WaveX-as-a-service, customer never holds the Composio key)
-            // we always fall through to the catalog, even if `valid: false`.
-            // An empty/degraded catalog is the right signal — "Composio
-            // is temporarily unavailable, your subscription covers it
-            // when it's back" — not "go enter your own key here".
-            <SetupScreen
-              status={setupStatus.data}
-              onComplete={() => {
-                void setupStatus.refresh();
-                void catalog.refresh();
-              }}
-            />
+            // Not ready (neither a valid key nor WaveX-managed). Two very
+            // different reasons land here and must NOT be conflated:
+            //   1. Backend unreachable (worker couldn't reach :3101 → the
+            //      handler returns `ok: false`). This is transient infra,
+            //      never the customer's problem. Show "temporarily
+            //      unavailable" — asking them for a Composio key here is
+            //      exactly wrong, especially in a managed deployment.
+            //   2. Genuine self-serve setup (OSS user, no key yet). Only
+            //      then is the key-entry SetupScreen the right surface.
+            // (In WaveX-managed mode `managed: true` skips both — it falls
+            //  through to the catalog above, even when `valid: false`.)
+            setupStatus.data && setupStatus.data.ok === false ? (
+              <UnavailablePanel onRetry={() => void setupStatus.refresh()} />
+            ) : (
+              <SetupScreen
+                status={setupStatus.data}
+                onComplete={() => {
+                  void setupStatus.refresh();
+                  void catalog.refresh();
+                }}
+              />
+            )
           ) : (
           <>
                 {/* Search row */}
@@ -1296,6 +1304,68 @@ function SetupScreen({
           </div>
         </form>
         )}
+      </div>
+    </div>
+  );
+}
+
+// Shown when the connectors backend (:3101) is unreachable. This is a
+// transient infra state, not a setup task — so it never asks for a key.
+// In a WaveX-managed deployment the operator owns the Composio auth, so
+// the only customer-facing action is "retry".
+function UnavailablePanel({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div
+      style={{
+        flex: 1,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "32px 28px",
+      }}
+    >
+      <div style={{ maxWidth: 420, width: "100%", textAlign: "center" }}>
+        <div
+          aria-hidden
+          style={{
+            width: 56,
+            height: 56,
+            borderRadius: 14,
+            background: SURFACE_ALT,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            marginBottom: 18,
+            color: TEXT_MUTED,
+          }}
+        >
+          <PlugIcon />
+        </div>
+        <h2 style={{ fontSize: 20, fontWeight: 600, margin: "0 0 8px", color: TEXT }}>
+          Connectors are temporarily unavailable
+        </h2>
+        <p style={{ fontSize: 14, color: TEXT_MUTED, lineHeight: 1.55, margin: "0 0 20px" }}>
+          The connector service is reconnecting. Your WaveX subscription
+          covers connectors — nothing to set up on your end. Try again in a
+          moment.
+        </p>
+        <button
+          type="button"
+          onClick={onRetry}
+          style={{
+            padding: "10px 18px",
+            fontSize: 13,
+            fontWeight: 600,
+            borderRadius: 10,
+            border: `1px solid ${BORDER_HOVER}`,
+            background: SURFACE_ALT,
+            color: TEXT,
+            cursor: "pointer",
+            fontFamily: "inherit",
+          }}
+        >
+          Retry
+        </button>
       </div>
     </div>
   );

@@ -145,7 +145,7 @@ export async function recentPoolBInferences(limit = 20, fresh = false): Promise<
   // via the companion migration, NOT via PostgREST's anon/authenticated
   // path). Falls back to RPC if direct schema access fails.
   const { data, error } = await (sb as unknown as {
-    schema: (s: string) => typeof sb;
+    schema: (s: string) => NonNullable<typeof sb>;
   }).schema("wavex_os").from("usage_ledger")
     .select("ran_at, model, status, prompt_tokens, completion_tokens, cost_cents, request_id, device_id, error_class")
     .eq("pool", "B")
@@ -179,7 +179,7 @@ export async function devicesWithLastInference(fresh = false): Promise<DeviceSta
   }
   const sb = getClient();
   if (!sb) return [];
-  const wavex = (sb as unknown as { schema: (s: string) => typeof sb }).schema("wavex_os");
+  const wavex = (sb as unknown as { schema: (s: string) => NonNullable<typeof sb> }).schema("wavex_os");
   const { data: devices, error: devErr } = await wavex.from("os_devices")
     .select("id, name, hostname, os_version, created_at");
   if (devErr || !devices) return [];
@@ -227,7 +227,7 @@ export async function pendingPairings(fresh = false): Promise<PendingPairingRow[
   }
   const sb = getClient();
   if (!sb) return [];
-  const { data, error } = await (sb as unknown as { schema: (s: string) => typeof sb })
+  const { data, error } = await (sb as unknown as { schema: (s: string) => NonNullable<typeof sb> })
     .schema("wavex_os").from("os_device_pairings")
     .select("user_code, hostname, status, created_at, expires_at")
     .gt("expires_at", new Date().toISOString())
@@ -250,7 +250,7 @@ export async function dailyPoolBSpend(days = 14, fresh = false): Promise<DailySp
   // single-operator instance this is well under 10k rows; bumping to
   // server-side aggregation via an RPC is a future optimization.
   const sinceIso = new Date(Date.now() - days * 24 * 60 * 60_000).toISOString();
-  const { data, error } = await (sb as unknown as { schema: (s: string) => typeof sb })
+  const { data, error } = await (sb as unknown as { schema: (s: string) => NonNullable<typeof sb> })
     .schema("wavex_os").from("usage_ledger")
     .select("ran_at, subscription_id, prompt_tokens, completion_tokens, cost_cents, status")
     .eq("pool", "B")
@@ -306,7 +306,7 @@ export async function operatorQuotaStatus(fresh = false): Promise<OperatorQuotaS
 
   const sinceIso = new Date(Date.now() - 30 * 24 * 60 * 60_000).toISOString();
   const { data, error } = await (sb as unknown as {
-    schema: (s: string) => typeof sb;
+    schema: (s: string) => NonNullable<typeof sb>;
   }).schema("wavex_os").from("usage_ledger")
     .select("ran_at, prompt_tokens, completion_tokens, cost_cents, status")
     .eq("pool", "B")
@@ -364,7 +364,7 @@ export async function installFunnelSummary(fresh = false): Promise<InstallFunnel
       pillar_suggest_calls_24h: 0, pillar_suggest_success_24h: 0,
     };
   }
-  const wavex = (sb as unknown as { schema: (s: string) => typeof sb }).schema("wavex_os");
+  const wavex = (sb as unknown as { schema: (s: string) => NonNullable<typeof sb> }).schema("wavex_os");
   const since = new Date(Date.now() - 24 * 60 * 60_000).toISOString();
 
   // 1. Pairings initiated in last 24h

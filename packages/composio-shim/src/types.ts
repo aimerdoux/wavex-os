@@ -15,6 +15,10 @@ export interface FeaturedToolkit {
   slug: string;
   displayName: string;
   category: "comms" | "crm" | "billing" | "analytics" | "dev" | "ops" | "other";
+  /** Brand logo URL for the curated/offline catalog. Live Composio mode
+   *  supplies its own logos via toolkit.meta.logo; this is the fallback so
+   *  the directory still shows real logos when the live catalog is down. */
+  logo?: string;
 }
 
 export type ApiKeyValidation =

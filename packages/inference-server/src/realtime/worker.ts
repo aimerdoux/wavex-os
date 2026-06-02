@@ -42,7 +42,8 @@ import {
   type AnthropicMessagesResponse,
 } from "../lib/anthropic-oauth.js";
 import { runPoolBPromptCoverage } from "../lib/pool-b-prompt-coverage.js";
-import { incrementCounter, setIfAbsent } from "../lib/rate-limit.js";
+import { prefetchUrlsInPrompt } from "../lib/url-prefetch.js";
+import { incrementCounter, setIfAbsent, setAdd } from "../lib/rate-limit.js";
 import {
   appendPoolBAuditEvent,
   isPoolBEnabled,
@@ -84,6 +85,44 @@ const REFRESH_INTERVAL_MS = 60_000;
 const DEFAULT_MODEL = process.env.WAVEX_OS_INFERENCE_MODEL ?? "claude-sonnet-4-6";
 const MAX_OUTPUT_TOKENS_HARD = 8000;
 const ACTIVE_STATUSES = new Set(["trialing", "active", "past_due"]);
+
+// ── Anonymous onboarding lane (Pool A) ──────────────────────────────────
+// ONE shared channel (no user_id suffix, no device_jwt) for the pre-auth
+// onboarding wizard. Customers publish here; we serve the call with the
+// operator's rotating Claude Max OAuth (callAnthropicOAuth) and reply on
+// `wavex-onboarding-response:<request_id>`. Realtime gives us no caller IP,
+// so the global hourly cap + the Pool A daily $ kill-switch are the abuse
+// backstops.
+const ONBOARDING_REQUEST_TOPIC = "wavex-onboarding-request";
+const ONBOARDING_RESPONSE_TOPIC_PREFIX = "wavex-onboarding-response:";
+const ONBOARDING_MODEL = process.env.WAVEX_ONBOARDING_MODEL ?? "claude-haiku-4-5-20251001";
+const ONBOARDING_MAX_OUTPUT_TOKENS = 1500;
+const ONBOARDING_RATE_WINDOW_SEC = 3600;
+const ONBOARDING_LIFETIME_WINDOW_SEC = 30 * 24 * 3600; // 30 days
+const ONBOARDING_GLOBAL_RATE_MAX = parseInt(process.env.WAVEX_ONBOARDING_RATE_MAX ?? "400", 10);
+// Per-install caps tuned so a full wizard run (~8-9 calls) plus retries fits.
+const ONBOARDING_PER_INSTALL_HR_MAX = parseInt(process.env.WAVEX_ONBOARDING_PER_INSTALL_HR_MAX ?? "40", 10);
+const ONBOARDING_PER_INSTALL_LIFETIME_MAX = parseInt(process.env.WAVEX_ONBOARDING_PER_INSTALL_LIFETIME_MAX ?? "150", 10);
+const ONBOARDING_INSTALLS_PER_EMAIL_MAX = parseInt(process.env.WAVEX_ONBOARDING_INSTALLS_PER_EMAIL_MAX ?? "5", 10);
+const POOL_A_DAILY_CAP_CENTS = parseInt(process.env.POOL_A_DAILY_CAP_CENTS ?? "1000", 10);
+
+// ── Connector lane (Composio OAuth + manifest, from the published domain) ─
+// A thin, allowlisted HTTP-over-Realtime proxy to the local wavex-os-server
+// (:3101). The published SPA can't reach the Mac directly, so it publishes on
+// the shared `wavex-connector-request` channel; we relay the call to the
+// server's connector routes (initiate OAuth, list connections, generate
+// manifest) and reply on `wavex-connector-response:<request_id>`. Path is
+// allowlisted so this can't be used to hit arbitrary :3101 routes.
+const CONNECTOR_REQUEST_TOPIC = "wavex-connector-request";
+const CONNECTOR_RESPONSE_TOPIC_PREFIX = "wavex-connector-response:";
+const CONNECTOR_SERVER_URL = (process.env.WAVEX_CONNECTOR_SERVER_URL ?? "http://127.0.0.1:3101").replace(/\/+$/, "");
+const CONNECTOR_ALLOWED_PREFIXES = [
+  "/wavex-os/onboarding/connectors",
+  "/wavex-os/onboarding/connector-manifest",
+  "/wavex-os/onboarding/connector-recommendations",
+];
+const CONNECTOR_RATE_WINDOW_SEC = 3600;
+const CONNECTOR_GLOBAL_RATE_MAX = parseInt(process.env.WAVEX_CONNECTOR_RATE_MAX ?? "600", 10);
 
 type Logger = {
   info: (msg: Record<string, unknown> | string, ...args: unknown[]) => void;
@@ -1284,6 +1323,273 @@ async function handleAnthropicRequest(args: {
   }
 }
 
+interface OnboardingRequestPayload {
+  request_id?: unknown;
+  prompt?: unknown;
+  max_output_tokens?: unknown;
+  purpose?: unknown;
+  email?: unknown;
+  install_id?: unknown;
+  company_id?: unknown;
+  model?: unknown;
+}
+
+/** Pool A — anonymous onboarding inference over Realtime.
+ *
+ *  The onboarding wizard runs before sign-in and before device pairing, so
+ *  there is no device_jwt and no per-user channel. Customers publish on the
+ *  shared ONBOARDING_REQUEST_TOPIC; we serve the call with the operator's
+ *  rotating Claude Max OAuth (Pool A) and reply on
+ *  `wavex-onboarding-response:<request_id>`.
+ *
+ *  Guards: purpose must be `onboarding:*`; a global hourly request cap; an
+ *  optional per-company cap; the Pool A daily spend kill-switch; an output
+ *  token clamp. Everything degrades to a structured { ok:false } so the
+ *  wizard never blocks. */
+async function handleOnboardingRequest(args: {
+  supabase: SupabaseClient;
+  payload: OnboardingRequestPayload;
+  log: Logger;
+}): Promise<void> {
+  const { supabase, payload, log } = args;
+  const started = Date.now();
+
+  const request_id = typeof payload.request_id === "string" ? payload.request_id : null;
+  const prompt = typeof payload.prompt === "string" ? payload.prompt : null;
+  const purpose = typeof payload.purpose === "string" ? payload.purpose : "";
+  const email = typeof payload.email === "string" ? payload.email.trim().toLowerCase() : null;
+  const installId =
+    typeof payload.install_id === "string"
+      ? payload.install_id
+      : typeof payload.company_id === "string"
+        ? payload.company_id
+        : null;
+  const model = typeof payload.model === "string" ? payload.model : ONBOARDING_MODEL;
+  const maxOut = Math.min(
+    typeof payload.max_output_tokens === "number" && payload.max_output_tokens > 0
+      ? payload.max_output_tokens
+      : 1024,
+    ONBOARDING_MAX_OUTPUT_TOKENS,
+  );
+
+  if (!request_id || !prompt) {
+    log.warn({ hasReqId: !!request_id }, "ignoring malformed onboarding request");
+    return;
+  }
+
+  const respond = async (body: Record<string, unknown>): Promise<void> => {
+    try {
+      const ch = supabase.channel(`${ONBOARDING_RESPONSE_TOPIC_PREFIX}${request_id}`);
+      await new Promise<void>((resolve) => {
+        ch.subscribe((status) => {
+          if (status === "SUBSCRIBED" || status === "CHANNEL_ERROR" || status === "TIMED_OUT") resolve();
+        });
+        setTimeout(resolve, 5_000);
+      });
+      await ch.send({ type: "broadcast", event: BROADCAST_EVENT, payload: body });
+      await supabase.removeChannel(ch);
+    } catch (e) {
+      log.error({ err: (e as Error).message, request_id }, "onboarding response broadcast failed");
+    }
+  };
+
+  // Purpose gate — this lane exists only for the onboarding wizard.
+  if (!purpose.startsWith("onboarding:")) {
+    await respond({ request_id, ok: false, error: "purpose_not_allowed" });
+    return;
+  }
+
+  // Global hourly request cap (Realtime gives us no client IP; this plus the
+  // daily $ cap below are the abuse backstops).
+  const globalCount = await incrementCounter("onb:rate:global", ONBOARDING_RATE_WINDOW_SEC);
+  if (globalCount > ONBOARDING_GLOBAL_RATE_MAX) {
+    await respond({ request_id, ok: false, error: "rate_limited", message: "onboarding inference is busy; try again shortly" });
+    return;
+  }
+  // Per-install caps (soft UX guard; the global + daily $ caps are the hard
+  // backstops since Realtime can't see the caller IP and install_id/email are
+  // client-provided).
+  if (installId) {
+    const hr = await incrementCounter(`onb:install:${installId}:hr`, ONBOARDING_RATE_WINDOW_SEC);
+    const life = await incrementCounter(`onb:install:${installId}:life`, ONBOARDING_LIFETIME_WINDOW_SEC);
+    if (hr > ONBOARDING_PER_INSTALL_HR_MAX || life > ONBOARDING_PER_INSTALL_LIFETIME_MAX) {
+      await respond({ request_id, ok: false, error: "rate_limited", message: "onboarding inference limit reached for this session" });
+      return;
+    }
+  }
+  // Distinct installs per email — blunts a single email spinning up endless
+  // fresh installs to dodge the per-install caps.
+  if (email) {
+    const { size } = await setAdd(`onb:email-installs:${email}`, installId ?? "unknown", ONBOARDING_LIFETIME_WINDOW_SEC);
+    if (size > ONBOARDING_INSTALLS_PER_EMAIL_MAX) {
+      await respond({ request_id, ok: false, error: "rate_limited", message: "too many onboarding sessions for this email" });
+      return;
+    }
+  }
+
+  // Pool A daily spend kill-switch. Fail-open on lookup error — a metrics
+  // hiccup shouldn't block onboarding.
+  try {
+    const { data: burn } = await supabase.rpc("wavex_os_pool_a_burn_today");
+    if (typeof burn === "number" && burn >= POOL_A_DAILY_CAP_CENTS) {
+      await respond({ request_id, ok: false, error: "cap_hit", message: "daily onboarding inference cap reached" });
+      return;
+    }
+  } catch {
+    /* fail open */
+  }
+
+  try {
+    // URL-prefetch: when the prompt contains a URL (e.g. the operator pasted
+    // their site at Pillar 1), fetch the page content and inject it as
+    // grounding so the model infers from the real site, not just the domain
+    // string. Idempotent + no-ops when there's no URL. Best-effort: a prefetch
+    // failure must not block inference, so fall back to the raw prompt.
+    let groundedPrompt = prompt;
+    try {
+      groundedPrompt = (await prefetchUrlsInPrompt(prompt)).prompt;
+    } catch (pfErr) {
+      log.warn({ request_id, err: (pfErr as Error).message }, "url prefetch failed; using raw prompt");
+    }
+    const resp = await callAnthropicOAuthRaw({
+      model,
+      max_tokens: maxOut,
+      messages: [{ role: "user", content: groundedPrompt }],
+    });
+    const content = (resp.content ?? [])
+      .map((c) => ((c as { type?: string; text?: string }).type === "text" ? (c as { text?: string }).text ?? "" : ""))
+      .join("");
+    const usage = resp.usage ?? { input_tokens: 0, output_tokens: 0 };
+    const costCents = Math.round(calcCostUsd(resp.model ?? model, usage) * 100);
+
+    await respond({
+      request_id,
+      ok: true,
+      content,
+      model: resp.model ?? model,
+      usage: {
+        input_tokens: usage.input_tokens,
+        output_tokens: usage.output_tokens,
+        duration_ms: Date.now() - started,
+      },
+    });
+
+    // Fire-and-forget Pool A ledger row (anonymous onboarding spend). No
+    // subscription/device/IP; install_id carries the company slug when present.
+    void supabase
+      .rpc("wavex_os_record_usage", {
+        p_pool: "A",
+        p_subscription_id: null,
+        p_request_id: request_id,
+        p_model: resp.model ?? model,
+        p_prompt_tokens: usage.input_tokens,
+        p_completion_tokens: usage.output_tokens,
+        p_cache_read_tokens: usage.cache_read_input_tokens ?? 0,
+        p_cache_creation_tokens: usage.cache_creation_input_tokens ?? 0,
+        p_cost_cents: costCents,
+        p_status: "ok",
+        p_device_id: null,
+        p_error_class: null,
+        p_install_id: installId ?? "onboarding-anon",
+        p_email: email,
+        p_ip_24: null,
+        p_deliverable_id: null,
+        p_agent_id: null,
+      })
+      .then((r: { error: unknown }) => {
+        if (r.error) log.error({ err: r.error, request_id }, "onboarding usage_ledger insert failed");
+      });
+
+    log.info(
+      { request_id, purpose, model: resp.model ?? model, out_tokens: usage.output_tokens, duration_ms: Date.now() - started },
+      "onboarding inference ok",
+    );
+  } catch (e) {
+    const err = e as { status?: number; message?: string };
+    log.error({ request_id, status: err.status, err: err.message }, "onboarding inference failed");
+    await respond({ request_id, ok: false, error: "upstream_error", message: err.message ?? "inference failed" });
+  }
+}
+
+interface ConnectorRequestPayload {
+  request_id?: unknown;
+  method?: unknown;
+  path?: unknown;
+  body?: unknown;
+}
+
+/** Connector lane — allowlisted HTTP proxy to the local wavex-os-server.
+ *
+ *  Lets the published SPA (wavexcard.com), which can't reach the Mac
+ *  directly, drive the phase-2 connector flow (Composio OAuth + manifest)
+ *  over Supabase Realtime. We relay `{method, path, body}` to
+ *  CONNECTOR_SERVER_URL only if `path` matches the connector allowlist, then
+ *  reply with the server's JSON on `wavex-connector-response:<request_id>`.
+ *
+ *  Degrades to { ok:false } on any failure; the vendored UI surfaces the
+ *  ApiError. Path allowlist + global rate cap are the guards (no IP over
+ *  Realtime). */
+async function handleConnectorRequest(args: {
+  supabase: SupabaseClient;
+  payload: ConnectorRequestPayload;
+  log: Logger;
+}): Promise<void> {
+  const { supabase, payload, log } = args;
+  const request_id = typeof payload.request_id === "string" ? payload.request_id : null;
+  const method = payload.method === "POST" ? "POST" : "GET";
+  const path = typeof payload.path === "string" ? payload.path : null;
+
+  if (!request_id || !path) {
+    log.warn({ hasReqId: !!request_id }, "ignoring malformed connector request");
+    return;
+  }
+
+  const respond = async (body: Record<string, unknown>): Promise<void> => {
+    try {
+      const ch = supabase.channel(`${CONNECTOR_RESPONSE_TOPIC_PREFIX}${request_id}`);
+      await new Promise<void>((resolve) => {
+        ch.subscribe((status) => {
+          if (status === "SUBSCRIBED" || status === "CHANNEL_ERROR" || status === "TIMED_OUT") resolve();
+        });
+        setTimeout(resolve, 5_000);
+      });
+      await ch.send({ type: "broadcast", event: BROADCAST_EVENT, payload: body });
+      await supabase.removeChannel(ch);
+    } catch (e) {
+      log.error({ err: (e as Error).message, request_id }, "connector response broadcast failed");
+    }
+  };
+
+  // Allowlist: only connector routes, no path traversal.
+  const pathname = path.split("?")[0] ?? "";
+  const allowed = !path.includes("..") && CONNECTOR_ALLOWED_PREFIXES.some((p) => pathname.startsWith(p));
+  if (!allowed) {
+    await respond({ request_id, ok: false, error: "path_not_allowed" });
+    return;
+  }
+
+  const globalCount = await incrementCounter("conn:rate:global", CONNECTOR_RATE_WINDOW_SEC);
+  if (globalCount > CONNECTOR_GLOBAL_RATE_MAX) {
+    await respond({ request_id, ok: false, error: "rate_limited" });
+    return;
+  }
+
+  try {
+    const init: RequestInit = { method, headers: { "Content-Type": "application/json" } };
+    if (method === "POST") init.body = JSON.stringify(payload.body ?? {});
+    const resp = await fetch(`${CONNECTOR_SERVER_URL}${path}`, init);
+    const text = await resp.text();
+    let data: unknown;
+    try { data = JSON.parse(text); } catch { data = text; }
+    await respond({ request_id, ok: resp.ok, status: resp.status, data });
+    log.info({ request_id, method, path: pathname, status: resp.status }, "connector proxy ok");
+  } catch (e) {
+    const err = e as { message?: string };
+    log.error({ request_id, path: pathname, err: err.message }, "connector proxy failed");
+    await respond({ request_id, ok: false, error: "upstream_error", message: err.message ?? "proxy failed" });
+  }
+}
+
 export interface RealtimeWorkerDeps {
   log: Logger;
   supabaseUrl?: string;
@@ -1315,50 +1621,106 @@ export async function startRealtimeWorker(deps: RealtimeWorkerDeps): Promise<Rea
   const channelsByUserId = new Map<string, RealtimeChannel>();
   const anthropicChannelsByUserId = new Map<string, RealtimeChannel>();
 
-  const subscribeUser = async (userId: string): Promise<void> => {
-    if (!channelsByUserId.has(userId)) {
-      const topic = `${REQUEST_TOPIC_PREFIX}${userId}`;
+  // Shared anonymous lanes (onboarding Pool A + connector proxy). No user_id,
+  // no device_jwt — the wizard runs before pairing/sign-in.
+  //
+  // CRITICAL RESILIENCE: Supabase Realtime channels drop on network blips /
+  // token refresh (CHANNEL_ERROR / TIMED_OUT / CLOSED). Without re-subscribing
+  // the lane goes SILENTLY DEAD — requests time out and onboarding shows blank
+  // inference (no preselection) until the process restarts. So we auto-rejoin
+  // on error with a short backoff. (Field incident 2026-06-02: the onboarding
+  // + connector channels errored and stayed dead for ~hour → blank Pillar 1.)
+  const sharedLanes: Array<{ topic: string; ch: RealtimeChannel | null }> = [];
+  const subscribeShared = (
+    topic: string,
+    label: string,
+    onPayload: (payload: Record<string, unknown>) => void,
+  ): void => {
+    const lane: { topic: string; ch: RealtimeChannel | null } = { topic, ch: null };
+    sharedLanes.push(lane);
+    const join = (): void => {
       const ch = supabase
         .channel(topic)
-        .on("broadcast", { event: BROADCAST_EVENT }, (msg: { payload?: RequestPayload }) => {
-          void handleRequest({
-            supabase,
-            topicUserId: userId,
-            payload: msg.payload ?? {},
-            log,
-          });
+        .on("broadcast", { event: BROADCAST_EVENT }, (msg: { payload?: Record<string, unknown> }) => {
+          onPayload(msg.payload ?? {});
         })
         .subscribe((status) => {
           if (status === "SUBSCRIBED") {
-            log.info({ topic, user_id: userId }, "realtime worker subscribed");
+            log.info({ topic }, `${label} subscribed`);
           } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
-            log.warn({ topic, status }, "realtime channel status");
+            log.warn({ topic, status }, `${label} channel ${status} — rejoining in 3s`);
+            const stale = lane.ch;
+            setTimeout(() => {
+              if (stale) void supabase.removeChannel(stale).catch(() => {});
+              join();
+            }, 3000);
           }
         });
-      channelsByUserId.set(userId, ch);
+      lane.ch = ch;
+    };
+    join();
+  };
+
+  subscribeShared(ONBOARDING_REQUEST_TOPIC, "onboarding lane", (payload) => {
+    void handleOnboardingRequest({ supabase, payload: payload as OnboardingRequestPayload, log });
+  });
+  subscribeShared(CONNECTOR_REQUEST_TOPIC, "connector lane", (payload) => {
+    void handleConnectorRequest({ supabase, payload: payload as ConnectorRequestPayload, log });
+  });
+
+  const subscribeUser = async (userId: string): Promise<void> => {
+    // Same auto-rejoin resilience as the shared lanes: a dropped per-user
+    // channel (CHANNEL_ERROR / TIMED_OUT / CLOSED) that never re-subscribes
+    // leaves a paired customer's Pool B inference silently dead until restart.
+    if (!channelsByUserId.has(userId)) {
+      const topic = `${REQUEST_TOPIC_PREFIX}${userId}`;
+      const joinReq = (): void => {
+        const ch = supabase
+          .channel(topic)
+          .on("broadcast", { event: BROADCAST_EVENT }, (msg: { payload?: RequestPayload }) => {
+            void handleRequest({ supabase, topicUserId: userId, payload: msg.payload ?? {}, log });
+          })
+          .subscribe((status) => {
+            if (status === "SUBSCRIBED") {
+              log.info({ topic, user_id: userId }, "realtime worker subscribed");
+            } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+              log.warn({ topic, status }, "realtime channel status — rejoining in 3s");
+              const stale = channelsByUserId.get(userId);
+              setTimeout(() => {
+                if (stale) void supabase.removeChannel(stale).catch(() => {});
+                joinReq();
+              }, 3000);
+            }
+          });
+        channelsByUserId.set(userId, ch);
+      };
+      joinReq();
     }
 
     // Second channel: anthropic-messages variant for the Claude Code proxy.
     if (!anthropicChannelsByUserId.has(userId)) {
       const topic = `${ANTHROPIC_REQUEST_TOPIC_PREFIX}${userId}`;
-      const ch = supabase
-        .channel(topic)
-        .on("broadcast", { event: ANTHROPIC_BROADCAST_EVENT }, (msg: { payload?: AnthropicRequestPayload }) => {
-          void handleAnthropicRequest({
-            supabase,
-            topicUserId: userId,
-            payload: msg.payload ?? {},
-            log,
+      const joinAnthropic = (): void => {
+        const ch = supabase
+          .channel(topic)
+          .on("broadcast", { event: ANTHROPIC_BROADCAST_EVENT }, (msg: { payload?: AnthropicRequestPayload }) => {
+            void handleAnthropicRequest({ supabase, topicUserId: userId, payload: msg.payload ?? {}, log });
+          })
+          .subscribe((status) => {
+            if (status === "SUBSCRIBED") {
+              log.info({ topic, user_id: userId }, "anthropic-messages worker subscribed");
+            } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+              log.warn({ topic, status }, "anthropic-messages channel status — rejoining in 3s");
+              const stale = anthropicChannelsByUserId.get(userId);
+              setTimeout(() => {
+                if (stale) void supabase.removeChannel(stale).catch(() => {});
+                joinAnthropic();
+              }, 3000);
+            }
           });
-        })
-        .subscribe((status) => {
-          if (status === "SUBSCRIBED") {
-            log.info({ topic, user_id: userId }, "anthropic-messages worker subscribed");
-          } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
-            log.warn({ topic, status }, "anthropic-messages channel status");
-          }
-        });
-      anthropicChannelsByUserId.set(userId, ch);
+        anthropicChannelsByUserId.set(userId, ch);
+      };
+      joinAnthropic();
     }
   };
 
@@ -1405,12 +1767,23 @@ export async function startRealtimeWorker(deps: RealtimeWorkerDeps): Promise<Rea
           /* ignore */
         }
       }
+      for (const lane of sharedLanes) {
+        if (lane.ch) {
+          try {
+            await supabase.removeChannel(lane.ch);
+          } catch {
+            /* ignore */
+          }
+        }
+      }
       channelsByUserId.clear();
       anthropicChannelsByUserId.clear();
     },
     subscribedTopics: () => [
       ...Array.from(channelsByUserId.keys()).map((u) => `${REQUEST_TOPIC_PREFIX}${u}`),
       ...Array.from(anthropicChannelsByUserId.keys()).map((u) => `${ANTHROPIC_REQUEST_TOPIC_PREFIX}${u}`),
+      ONBOARDING_REQUEST_TOPIC,
+      CONNECTOR_REQUEST_TOPIC,
     ],
   };
 }
