@@ -85,13 +85,11 @@ Deno.serve(async (req: Request) => {
     return json({ error: "missing_fields" }, 400);
   }
 
-  // Load the booking intent and verify ownership.
-  const { data: intent, error: intentErr } = await sb
-    .schema("wavex_os")
-    .from("booking_intents")
-    .select("id, user_id, experience_name, experience_price_cents, currency, status, stripe_checkout_session_id")
-    .eq("id", booking_intent_id)
-    .maybeSingle();
+  // Load the booking intent via RPC (wavex_os schema is not in PostgREST exposed list;
+  // all wavex_os table access goes through public-schema security-definer RPCs).
+  const { data: intent, error: intentErr } = await sb.rpc("wavex_os_get_booking_intent", {
+    p_intent_id: booking_intent_id,
+  });
 
   if (intentErr || !intent) return json({ error: "intent_not_found" }, 404);
   if (intent.user_id && intent.user_id !== userId) return json({ error: "forbidden" }, 403);
