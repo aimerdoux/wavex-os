@@ -26,6 +26,8 @@ const bodySchema = z.object({
 type AuthEventBody = z.infer<typeof bodySchema>;
 
 // ─── Supabase write ────────────────────────────────────────────────────────
+// Uses wavex_os_record_auth_event RPC (public schema SECURITY DEFINER) because
+// the wavex_os schema is intentionally not exposed via PostgREST.
 
 async function writeAuthEvent(row: {
   user_id: string;
@@ -42,25 +44,30 @@ async function writeAuthEvent(row: {
     console.warn("[auth-events] Supabase not configured — event not persisted");
     return null;
   }
-  const res = await fetch(`${url}/rest/v1/wavex_os.auth_events`, {
+  const res = await fetch(`${url}/rest/v1/rpc/wavex_os_record_auth_event`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Prefer": "return=representation,resolution=ignore-duplicates",
       apikey: key,
       Authorization: `Bearer ${key}`,
     },
-    body: JSON.stringify(row),
+    body: JSON.stringify({
+      p_user_id:      row.user_id,
+      p_email:        row.email ?? null,
+      p_event_type:   row.event_type,
+      p_utm_campaign: row.utm_campaign ?? null,
+      p_utm_source:   row.utm_source ?? null,
+      p_ref:          row.ref ?? null,
+      p_resend_fired: row.resend_fired,
+    }),
   });
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
-    // 409 / duplicate constraint → idempotent, not an error.
-    if (res.status === 409) return null;
     console.error(`[auth-events] DB write failed: ${res.status} ${detail}`);
     return null;
   }
-  const records = (await res.json().catch(() => [])) as Array<{ id: string }>;
-  return records[0] ?? null;
+  const id = (await res.json().catch(() => null)) as string | null;
+  return id ? { id } : null;
 }
 
 // ─── Resend attribution ────────────────────────────────────────────────────
@@ -155,19 +162,19 @@ export function registerAuthEventsRoute(app: FastifyInstance): void {
         return reply.status(503).send({ ok: false, error: "Supabase not configured" });
       }
 
-      const res = await fetch(
-        `${url}/rest/v1/wavex_os.auth_events` +
-        `?utm_campaign=eq.${encodeURIComponent(campaign)}` +
-        `&event_type=eq.signup_confirmed` +
-        `&created_at=gte.${encodeURIComponent(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())}` +
-        `&select=user_id`,
-        { headers: { apikey: key, Authorization: `Bearer ${key}` } },
-      );
+      const res = await fetch(`${url}/rest/v1/rpc/wavex_os_count_campaign_signups`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: key,
+          Authorization: `Bearer ${key}`,
+        },
+        body: JSON.stringify({ p_utm_campaign: campaign }),
+      });
       if (!res.ok) {
         return reply.status(502).send({ ok: false, error: `Supabase ${res.status}` });
       }
-      const rows = (await res.json().catch(() => [])) as Array<{ user_id: string }>;
-      const distinct = new Set(rows.map((r) => r.user_id)).size;
+      const distinct = (await res.json().catch(() => 0)) as number;
       return reply.send({ ok: true, utm_campaign: campaign, new_auth_users: distinct });
     },
   );
