@@ -18,8 +18,13 @@
  */
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join, dirname } from "node:path";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
+import { assertBoard, AuthError } from "@wavex-os/auth-shim";
 import { getWavexDataRoot } from "../state-bridge.js";
+
+function authReq(req: FastifyRequest) {
+  return { method: req.method, headers: req.headers as Record<string, string> };
+}
 
 const DEFAULT_SWARM_PCT = 70;
 
@@ -65,6 +70,17 @@ export function registerInferenceAllocationRoute(app: FastifyInstance): void {
   });
 
   app.put("/api/inference-allocation", async (req, reply) => {
+    // Board-only: changing the swarm/Pool-A split is an operator setting. An
+    // unauthenticated PUT with swarm_pct=100 would zero out Pool A and starve
+    // the onboarding wizard a new customer is sitting in front of. In dev mode
+    // the gate is a no-op (synthetic local board actor), so Mission Control +
+    // onboarding Pillar 2 keep working; in production it requires a board actor.
+    try {
+      assertBoard(authReq(req));
+    } catch (e) {
+      if (e instanceof AuthError) return reply.status(e.statusCode).send({ ok: false, error: e.message });
+      throw e;
+    }
     const body = (req.body ?? {}) as { swarm_pct?: unknown };
     if (body.swarm_pct === undefined) {
       return reply.status(400).send({ ok: false, error: "swarm_pct is required" });
