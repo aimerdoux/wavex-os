@@ -233,6 +233,13 @@ async function writeOrUpdateEnvFile(
   updates: Record<string, string>,
 ): Promise<void> {
   const { readFile, writeFile } = await import("node:fs/promises");
+  // Defense-in-depth: never let a value carry a newline/CR that would split
+  // into an extra `.env` line and inject an unrelated env var.
+  for (const [k, v] of Object.entries(updates)) {
+    if (/[\r\n]/.test(v)) {
+      throw new Error(`env value for ${k} contains illegal newline characters`);
+    }
+  }
   let existing = "";
   try {
     existing = await readFile(envPath, "utf8");
@@ -256,7 +263,9 @@ async function writeOrUpdateEnvFile(
   }
   // Trim trailing blank lines, ensure single newline at end.
   while (next.length > 0 && next[next.length - 1]!.trim() === "") next.pop();
-  await writeFile(envPath, `${next.join("\n")}\n`, "utf8");
+  // Restrictive perms: the .env may hold a plaintext Composio key; avoid a
+  // world-readable (0644) file.
+  await writeFile(envPath, `${next.join("\n")}\n`, { encoding: "utf8", mode: 0o600 });
 }
 
 export function registerCredentialRoutes(app: FastifyInstance): void {
@@ -391,7 +400,8 @@ export function registerCredentialRoutes(app: FastifyInstance): void {
   //   to <repo>/.env, mutates process.env in-memory, and resets the
   //   composio-shim cached client. No process restart required.
 
-  app.get("/api/connectors/setup-status", async (_req, reply) => {
+  app.get("/api/connectors/setup-status", async (req, reply) => {
+    if (!gateBoard(req, reply)) return;
     const hasKey = Boolean((process.env.COMPOSIO_API_KEY ?? "").trim());
     const disabled = (process.env.WAVEX_COMPOSIO_DISABLED ?? "").toLowerCase();
     const isDisabled = disabled === "1" || disabled === "true" || disabled === "yes";
@@ -449,9 +459,16 @@ export function registerCredentialRoutes(app: FastifyInstance): void {
   app.post<{ Body: { apiKey?: string } }>(
     "/api/connectors/setup",
     async (req, reply) => {
+      if (!gateBoard(req, reply)) return;
       const apiKey = (req.body?.apiKey ?? "").trim();
       if (!apiKey) {
         return reply.code(400).send({ ok: false, error: "apiKey is required." });
+      }
+      // Reject control characters: the value is later written verbatim into
+      // the repo .env as `KEY=value`; an embedded newline would inject
+      // arbitrary additional env lines (e.g. ANTHROPIC_API_KEY=...).
+      if (/[\r\n]/.test(apiKey)) {
+        return reply.code(400).send({ ok: false, error: "apiKey contains illegal characters." });
       }
       // 1. Mutate process.env so the next getClient() call picks up
       //    the new key (composio-shim's getComposioApiKey() re-reads
@@ -519,7 +536,8 @@ export function registerCredentialRoutes(app: FastifyInstance): void {
   //   key-entry screen. If no server-side master key is configured, the
   //   catalog renders its empty state ("activates with your subscription")
   //   rather than the BYO-key form — same final UX, no secret in the browser.
-  app.post("/api/connectors/enable-managed", async (_req, reply) => {
+  app.post("/api/connectors/enable-managed", async (req, reply) => {
+    if (!gateBoard(req, reply)) return;
     process.env.WAVEX_COMPOSIO_MANAGED = "1";
     process.env.WAVEX_COMPOSIO_DISABLED = "0";
     resetComposioClient();
@@ -546,7 +564,8 @@ export function registerCredentialRoutes(app: FastifyInstance): void {
    *  built from this. Cached in-process for 5 min — the catalog is
    *  ~200+ entries and rarely changes. */
   let _cachedCatalog: { ts: number; rows: Array<{ slug: string; name: string; logo?: string; description?: string; category?: string; noAuth?: boolean; authSchemes?: string[] }>; source: "composio" | "curated" } | null = null;
-  app.get("/api/connectors/catalog", async (_req, reply) => {
+  app.get("/api/connectors/catalog", async (req, reply) => {
+    if (!gateBoard(req, reply)) return;
     const now = Date.now();
     if (_cachedCatalog && now - _cachedCatalog.ts < 5 * 60_000) {
       return reply.send({ ok: true, ...{ rows: _cachedCatalog.rows, source: _cachedCatalog.source, cached: true } });

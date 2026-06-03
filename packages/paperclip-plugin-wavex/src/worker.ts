@@ -3,7 +3,7 @@
  *
  * Registers data + action handlers consumed by the Mission Control UI
  * widgets and the Inception Status sidebar. The only outbound HTTP
- * target is the wavex-os op-omega-server (default http://127.0.0.1:3101).
+ * target is the wavex-os-server (default http://127.0.0.1:3101).
  *
  * No writes through this plugin. State-changing actions still flow
  * through Paperclip's native commands or the wavex MC routes — the
@@ -27,7 +27,7 @@ const PAPERCLIP_BASE = "http://127.0.0.1:3100";
  *
  *  The host's plugin-bridge HTTP client refuses any URL that resolves to a
  *  private/loopback IP as an SSRF guard. Mission Control's data source is
- *  the wavex op-omega-server sibling on 127.0.0.1:3101 — strictly local —
+ *  the wavex-os-server sibling on 127.0.0.1:3101 — strictly local —
  *  so we use the worker process's native fetch, which is not subject to
  *  that guard. This keeps the wavex plugin honest about its only outbound
  *  target (the same machine the host is on) without weakening the
@@ -1286,8 +1286,8 @@ const plugin = definePlugin({
     );
 
     // -------------------------------------------------------------------
-    // inception-status — reads /api/companies/<id>/agents from op-omega
-    //   server. Returns ready/total counts + manifest goal/signed_at.
+    // inception-status — reads /api/companies/<id>/agents from the
+    //   wavex-os-server. Returns ready/total counts + manifest goal/signed_at.
     // -------------------------------------------------------------------
     ctx.data.register("inception-status", async ({ companyId }) => {
       const cfg = (await ctx.config.get()) as PluginConfig | null;

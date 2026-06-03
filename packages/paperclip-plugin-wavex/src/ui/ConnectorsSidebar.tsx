@@ -6,13 +6,13 @@
  *      filter/sort, grouped cards. Each card has a brand logo + name +
  *      "#N popular" badge + add (+) button.
  *    - Add triggers real OAuth via the existing
- *      POST /op-omega/onboarding/connectors/oauth/initiate route,
+ *      POST /wavex-os/onboarding/connectors/oauth/initiate route,
  *      opening the redirect URL in a new tab and polling the vault
  *      until the slug shows vaulted_valid (then the card flips to
  *      connected).
  *    - Disconnect calls DELETE /api/connectors/:companyId/:slug.
  *
- *  Backend reuse: connect/list/callback exist in op-omega-server's
+ *  Backend reuse: connect/list/callback exist in wavex-os-server's
  *  connectors.ts; connected-status + disconnect routes I added to
  *  credentials.ts. No new tables.
  */
