@@ -59,6 +59,7 @@ import { registerMissionControlRoutes } from "./routes/mission-control.js";
 import { startReferralEmailBScheduler } from "./jobs/referral-email-b.js";
 import { startProfessionalReengagementScheduler } from "./jobs/professional-reengagement.js";
 import { startBookingIntentCleanupScheduler } from "./jobs/booking-intent-cleanup.js";
+import { runAbandonedBookingRecoveryJob } from "./jobs/abandoned-booking-recovery.js";
 import { registerReengagementRoutes } from "./routes/reengagement.js";
 
 let bootstrapped = false;
@@ -123,6 +124,12 @@ export function registerWavexOsRoutes(app: FastifyInstance): void {
   startReferralEmailBScheduler();
   startProfessionalReengagementScheduler();
   startBookingIntentCleanupScheduler();
+  // One-shot: diagnose + optionally send abandoned booking recovery nudges.
+  // Safe by default (WAVEX_ABANDONED_BOOKING_DRY_RUN=true). Set to "false"
+  // after CEO approval to actually send. idempotent via nudge log unique constraint.
+  void runAbandonedBookingRecoveryJob().catch((err) =>
+    console.error("[abandoned-booking-recovery] startup run failed:", err),
+  );
 }
 
 export { applyStateBridge, getInstanceDir, getOnboardingDir, getWavexDataRoot } from "./state-bridge.js";
