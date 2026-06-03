@@ -58,6 +58,7 @@ import { registerGitHubReposRoute } from "./routes/github-repos.js";
 import { registerMissionControlRoutes } from "./routes/mission-control.js";
 import { startReferralEmailBScheduler } from "./jobs/referral-email-b.js";
 import { startProfessionalReengagementScheduler } from "./jobs/professional-reengagement.js";
+import { startBookingIntentCleanupScheduler } from "./jobs/booking-intent-cleanup.js";
 import { registerReengagementRoutes } from "./routes/reengagement.js";
 
 let bootstrapped = false;
@@ -121,6 +122,7 @@ export function registerWavexOsRoutes(app: FastifyInstance): void {
   registerReengagementRoutes(app);
   startReferralEmailBScheduler();
   startProfessionalReengagementScheduler();
+  startBookingIntentCleanupScheduler();
 }
 
 export { applyStateBridge, getInstanceDir, getOnboardingDir, getWavexDataRoot } from "./state-bridge.js";
