@@ -26,15 +26,40 @@
  *  Daemon is spawned non-blocking after each action so /api/system/health
  *  returns the updated state within ~5s of the click. */
 
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import path from "node:path";
 import { homedir, platform } from "node:os";
 import { spawn, exec } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { promises as fs } from "node:fs";
+import { assertBoard, AuthError } from "@wavex-os/auth-shim";
 
 const execAsync = promisify(exec);
+
+/** Mirror of the authReq helper used by activate.ts — projects the Fastify
+ *  request into the minimal shape the auth-shim gates read. In dev mode the
+ *  gate auto-populates a synthetic local board actor (no-op for the local
+ *  operator); in production it requires a real board actor. */
+function authReq(req: FastifyRequest) {
+  return { method: req.method, headers: req.headers as Record<string, string> };
+}
+
+/** Returns true and sends the error reply when the caller is NOT an
+ *  authorized board actor. These handlers run git/launchctl/pnpm against the
+ *  repo root, so an unauthenticated caller must never reach them. */
+function denyIfNotBoard(req: FastifyRequest, reply: FastifyReply): boolean {
+  try {
+    assertBoard(authReq(req));
+    return false;
+  } catch (e) {
+    if (e instanceof AuthError) {
+      reply.status(e.statusCode).send({ ok: false, error: e.message });
+      return true;
+    }
+    throw e;
+  }
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Walk up from packages/wavex-os-server/src/routes/ → repo root.
@@ -58,7 +83,8 @@ async function spawnDaemonRefresh(): Promise<boolean> {
 }
 
 export function registerSystemActionsRoute(app: FastifyInstance): void {
-  app.post("/api/system/discard-local-changes", async () => {
+  app.post("/api/system/discard-local-changes", async (req, reply) => {
+    if (denyIfNotBoard(req, reply)) return reply;
     try {
       const status = await execAsync("git status --porcelain", { cwd: REPO_ROOT });
       if (!status.stdout.trim()) {
@@ -96,7 +122,8 @@ export function registerSystemActionsRoute(app: FastifyInstance): void {
     }
   });
 
-  app.post("/api/system/restart-processes", async () => {
+  app.post("/api/system/restart-processes", async (req, reply) => {
+    if (denyIfNotBoard(req, reply)) return reply;
     const labels = [
       "com.wavex-os.mock-core",
       "com.wavex-os.wavex-os-server",
@@ -133,7 +160,8 @@ export function registerSystemActionsRoute(app: FastifyInstance): void {
     return { ok: true, results, daemon_refreshed: refreshed };
   });
 
-  app.post("/api/system/pull-and-restart", async () => {
+  app.post("/api/system/pull-and-restart", async (req, reply) => {
+    if (denyIfNotBoard(req, reply)) return reply;
     let stashed = false;
     let stashLabel: string | null = null;
     try {
