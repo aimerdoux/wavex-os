@@ -51,6 +51,7 @@ export const renderers: Readonly<Record<ActivityEventKind, EventRenderer>> = {
   deliverable_revised: deliverable.deliverable_revised,
   deliverable_approved: deliverable.deliverable_approved,
   deliverable_published: deliverable.deliverable_published,
+  deliverable_verified: deliverable.deliverable_verified,
   // Node
   node_added: node.node_added,
   node_archived: node.node_archived,

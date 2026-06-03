@@ -38,3 +38,9 @@ export const deliverable_published: EventRenderer = (event, ctx) => {
   const title = deliverableName(event);
   return `${who} published: ${title}`;
 };
+
+export const deliverable_verified: EventRenderer = (event, ctx) => {
+  const who = nodeName(event.actorNodeId, ctx);
+  const title = deliverableName(event);
+  return `${who} verified: ${title}`;
+};

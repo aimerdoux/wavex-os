@@ -39,6 +39,8 @@ const STATUS_TINT: Record<DeliverableStatus, string> = {
   approved: "#4ade80",
   rejected: "#ff6b6b",
   published: "#00d4ff",
+  verified: "#22c55e",
+  failed: "#ff6b6b",
 };
 
 const KIND_LABEL: Record<DeliverableKind, string> = {
