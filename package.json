@@ -14,13 +14,13 @@
     "apps/*"
   ],
   "scripts": {
-    "dev": "pnpm install --prefer-offline && pnpm dev:everything",
+    "dev": "pnpm install --prefer-offline --prod=false && pnpm dev:everything",
     "dev:everything": "pnpm dev:paperclip:install && pnpm dev:wavex-plugin:build && pnpm --parallel --filter \"./packages/onboarding-ui\" --filter \"./packages/mock-core\" --filter \"paperclip\" dev",
     "dev:no-paperclip": "pnpm --parallel --filter \"./packages/onboarding-ui\" --filter \"./packages/mock-core\" dev",
     "dev:ui": "pnpm --filter \"./packages/onboarding-ui\" dev",
     "dev:core": "pnpm --filter \"./packages/mock-core\" dev",
     "dev:paperclip": "pnpm dev:paperclip:install && pnpm dev:wavex-plugin:build && pnpm --filter paperclip dev",
-    "dev:paperclip:install": "cd packages/core && pnpm install --prefer-offline",
+    "dev:paperclip:install": "cd packages/core && pnpm install --prefer-offline --prod=false",
     "dev:wavex-plugin:build": "pnpm --filter @wavex-os/paperclip-plugin-wavex build || echo 'wavex plugin build skipped (typecheck-only mode)'",
     "dev:full": "pnpm dev:everything",
     "clean": "find . -name 'dist' -not -path '*/node_modules/*' -exec rm -rf {} + ; find . -name '*.tsbuildinfo' -not -path '*/node_modules/*' -delete",
