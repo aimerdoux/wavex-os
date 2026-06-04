@@ -32,6 +32,18 @@ const FETCH_TIMEOUT_MS = 5_000;
 const MAX_BYTES = 50 * 1024;
 const MAX_EXTRACT_CHARS = 30 * 1024;
 const UA = "WaveX-OS-Onboarding/1.0 (+https://github.com/aimerdoux/wavex-os)";
+// Minimum readable text (after stripping the [META] prefix) for a page to
+// count as "real" content. Below this, the site is almost certainly parked,
+// a redirect stub, or JS-rendered with no SSR — feeding it to the model just
+// invites a confident hallucination, so we mark it FETCH FAILED instead.
+const MIN_CONTENT_CHARS = 120;
+// `<meta http-equiv="refresh" content="0;url=...">` — common for parked
+// domains and some real sites. fetch() follows HTTP redirects but not this.
+const META_REFRESH_REGEX = /<meta[^>]+http-equiv=["']?refresh["']?[^>]*content=["'][^"']*url=([^"'>\s]+)/i;
+// Parked / placeholder fingerprints (IONOS, GoDaddy, Sedo, generic "buy this
+// domain" pages). If the only content we can read is a parking page, the model
+// must not infer a real company from it.
+const PARKED_RE = /\b(este dominio ya|buy this domain|this domain (is|may be) for sale|domain is parked|parkingcrew|sedoparking|godaddy\.com\/domains|hugedomains|is registered with ionos|defaultsite|under construction|coming soon)\b/i;
 
 const PRIVATE_HOST_PATTERNS = [
   /^localhost$/i,
@@ -94,7 +106,10 @@ interface FetchResult {
   reason?: string;
 }
 
-async function fetchOne(url: URL): Promise<FetchResult> {
+/** Fetch raw HTML (byte-capped) for a single URL. Returns the decoded string
+ *  or a failure reason. No extraction — callers run htmlToText / meta-refresh
+ *  detection on the raw markup. */
+async function fetchRawHtml(url: URL): Promise<{ ok: true; raw: string } | { ok: false; reason: string }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
@@ -104,18 +119,13 @@ async function fetchOne(url: URL): Promise<FetchResult> {
       signal: controller.signal,
       redirect: "follow",
     });
-    if (!resp.ok) {
-      return { url: url.toString(), status: "failed", reason: `HTTP ${resp.status}` };
-    }
+    if (!resp.ok) return { ok: false, reason: `HTTP ${resp.status}` };
     const ct = resp.headers.get("content-type") ?? "";
-    if (!/text\/html|application\/xhtml/i.test(ct)) {
-      return { url: url.toString(), status: "failed", reason: `non-html content-type: ${ct}` };
-    }
-    // Cap bytes by reading until limit
+    if (!/text\/html|application\/xhtml/i.test(ct)) return { ok: false, reason: `non-html content-type: ${ct}` };
     const reader = resp.body?.getReader();
     if (!reader) {
       const txt = await resp.text();
-      return { url: url.toString(), status: "ok", body: htmlToText(txt.slice(0, MAX_BYTES)) };
+      return { ok: true, raw: txt.slice(0, MAX_BYTES) };
     }
     const chunks: Uint8Array[] = [];
     let received = 0;
@@ -130,14 +140,44 @@ async function fetchOne(url: URL): Promise<FetchResult> {
     const merged = new Uint8Array(concatLen);
     let off = 0;
     for (const c of chunks) { merged.set(c, off); off += c.length; }
-    const raw = new TextDecoder("utf-8", { fatal: false }).decode(merged.slice(0, MAX_BYTES));
-    return { url: url.toString(), status: "ok", body: htmlToText(raw) };
+    return { ok: true, raw: new TextDecoder("utf-8", { fatal: false }).decode(merged.slice(0, MAX_BYTES)) };
   } catch (e) {
     const reason = (e as Error).name === "AbortError" ? `timeout after ${FETCH_TIMEOUT_MS}ms` : (e as Error).message;
-    return { url: url.toString(), status: "failed", reason };
+    return { ok: false, reason };
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function fetchOne(url: URL): Promise<FetchResult> {
+  const first = await fetchRawHtml(url);
+  if (!first.ok) return { url: url.toString(), status: "failed", reason: first.reason };
+  let raw = first.raw;
+
+  // Follow ONE meta-refresh hop (parked domains + some real sites use it; plain
+  // fetch() doesn't). Resolve the target relative to the current URL, validate
+  // it's a safe public host, and re-fetch.
+  const mr = raw.match(META_REFRESH_REGEX);
+  if (mr) {
+    try {
+      const target = new URL(mr[1].replace(/&amp;/g, "&"), url);
+      if (isSafePublicUrl(target.toString())) {
+        const hop = await fetchRawHtml(target);
+        if (hop.ok) raw = hop.raw;
+      }
+    } catch { /* keep the first page */ }
+  }
+
+  const body = htmlToText(raw);
+  // Strip the [META] ... prefix when measuring real body text.
+  const textOnly = body.replace(/^\[META\][^\n]*\n+/, "").trim();
+  if (textOnly.length < MIN_CONTENT_CHARS) {
+    return { url: url.toString(), status: "failed", reason: "no readable content (site may be parked, empty, or JavaScript-rendered)" };
+  }
+  if (PARKED_RE.test(body)) {
+    return { url: url.toString(), status: "failed", reason: "domain appears parked / not a live site" };
+  }
+  return { url: url.toString(), status: "ok", body };
 }
 
 /** Pre-fetch every public http(s) URL in `prompt` and return a new prompt
