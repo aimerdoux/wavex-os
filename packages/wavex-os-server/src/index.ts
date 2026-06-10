@@ -62,6 +62,8 @@ import { startBookingIntentCleanupScheduler } from "./jobs/booking-intent-cleanu
 import { runAbandonedBookingRecoveryJob } from "./jobs/abandoned-booking-recovery.js";
 import { registerReengagementRoutes } from "./routes/reengagement.js";
 import { registerBookingRecoveryRoute } from "./routes/booking-recovery.js";
+import { registerBookingIntentRoute } from "./routes/booking-intent.js";
+import { registerUnsubscribeRoute } from "./routes/unsubscribe.js";
 
 let bootstrapped = false;
 function bootstrap(): void {
@@ -123,6 +125,8 @@ export function registerWavexOsRoutes(app: FastifyInstance): void {
   registerMissionControlRoutes(app);
   registerReengagementRoutes(app);
   registerBookingRecoveryRoute(app);
+  registerBookingIntentRoute(app);
+  registerUnsubscribeRoute(app);
   startReferralEmailBScheduler();
   startProfessionalReengagementScheduler();
   startBookingIntentCleanupScheduler();
