@@ -1,7 +1,7 @@
 /** Wizard telemetry event logging + metrics.
  *
  *  POST /api/wizard-events
- *    Writes a row to wavex_os.wizard_events. Accepts all 5 event types.
+ *    Writes a row to public.wizard_events. Accepts all 5 event types.
  *    Fire-and-forget from the browser; always returns { ok: true }.
  *
  *  GET /api/wizard-metrics
@@ -52,7 +52,7 @@ async function writeWizardEvent(row: {
     console.warn("[wizard-events] Supabase not configured — event not persisted");
     return null;
   }
-  const res = await fetch(`${cfg.url}/rest/v1/wavex_os.wizard_events`, {
+  const res = await fetch(`${cfg.url}/rest/v1/wizard_events`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -81,7 +81,7 @@ async function queryWizardMetrics(cfg: { url: string; key: string }): Promise<{
   // Fetch all wizard events — compute metrics in-process since PostgREST
   // doesn't expose percentile aggregates without an RPC function.
   const eventsRes = await fetch(
-    `${cfg.url}/rest/v1/wavex_os.wizard_events?select=user_id,event_type,step,created_at&order=created_at.asc`,
+    `${cfg.url}/rest/v1/wizard_events?select=user_id,event_type,step,created_at&order=created_at.asc`,
     { headers },
   );
   if (!eventsRes.ok) {

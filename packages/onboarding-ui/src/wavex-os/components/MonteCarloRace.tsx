@@ -17,8 +17,24 @@ import { wavexOsOnboardingApi } from "../lib/api";
 export interface StrategyRow {
   strategy_id: string;
   mean_mrr_growth: number;
+  /** Pre-scale runs hold MRR flat by design — activation growth is the
+   *  stat that actually differentiates strategies there. */
+  mean_activation_growth?: number;
   p_ruin: number;
   sharpe: number;
+}
+
+/** Pre-scale mode produces mean_mrr_growth=0 for EVERY strategy by design,
+ *  which used to flatline all five race curves at zero ("no numbers, no
+ *  graphics" — operator QA 2026-06-10). When MRR growth is degenerate,
+ *  race on activation growth instead. */
+export function isMrrDegenerate(rows: StrategyRow[]): boolean {
+  return rows.length > 0 && rows.every((s) => Math.abs(s.mean_mrr_growth) < 1e-9);
+}
+
+export function raceValue(s: StrategyRow, mrrDegenerate: boolean): number {
+  if (mrrDegenerate) return Math.max(0, s.mean_activation_growth ?? 0);
+  return Math.max(0, s.mean_mrr_growth);
 }
 
 export interface MonteCarloReportLike {
@@ -125,9 +141,13 @@ export function MonteCarloRace({ report, companyId, durationMs = 6000, onComplet
   }, [companyId]);
 
   // Normalize end-values across strategies into a 0..1 range for the chart's
-  // y-axis. A strategy with mean_mrr_growth=0 sits at 0; the maximum sits
-  // near 1 (with some headroom).
-  const maxGrowth = Math.max(...report.strategies.map((s: StrategyRow) => Math.max(0, s.mean_mrr_growth)), 0.05);
+  // y-axis. In pre-scale runs every mean_mrr_growth is 0 by design, so the
+  // race switches to activation growth (see raceValue).
+  const mrrDegenerate = isMrrDegenerate(report.strategies);
+  const maxGrowth = Math.max(
+    ...report.strategies.map((s: StrategyRow) => raceValue(s, mrrDegenerate)),
+    0.05,
+  );
 
   const winnerId = report.winner.strategy_id;
 
@@ -142,7 +162,10 @@ export function MonteCarloRace({ report, companyId, durationMs = 6000, onComplet
         </div>
         <div className="text-dim" style={{ fontSize: 11, lineHeight: 1.5 }}>
           {report.n_runs_per_strategy} runs × {report.horizon_cycles} cycles across 5 GTM
-          strategies — the one with the best compound trajectory wins.
+          strategies —{" "}
+          {mrrDegenerate
+            ? "pre-scale model: MRR is held flat by design, so the race is projected activation lift."
+            : "the one with the best compound MRR trajectory wins."}
         </div>
       </div>
       <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} width="100%" style={{ maxWidth: WIDTH }}>
@@ -169,6 +192,7 @@ export function MonteCarloRace({ report, companyId, durationMs = 6000, onComplet
             strategy={s}
             progress={progress}
             maxGrowth={maxGrowth}
+            mrrDegenerate={mrrDegenerate}
             isWinner={s.strategy_id === winnerId}
           />
         ))}
@@ -252,18 +276,20 @@ function NarrativeBlock({ narrative, raceDone }: { narrative: NarrativeState; ra
 }
 
 function StrategyLine({
-  strategy, progress, maxGrowth, isWinner,
+  strategy, progress, maxGrowth, mrrDegenerate, isWinner,
 }: {
   strategy: StrategyRow;
   progress: number;
   maxGrowth: number;
+  mrrDegenerate: boolean;
   isWinner: boolean;
 }) {
   const color = STRATEGY_COLORS[strategy.strategy_id] ?? "#888";
-  // Build a synthetic curve from the strategy's mean_mrr_growth. The winner
+  // Build a synthetic curve from the strategy's race value (MRR growth, or
+  // activation growth when MRR is design-frozen pre-scale). The winner
   // gets a 30% visual boost so it reaches near the top of the chart and
   // clearly "wins" the race rather than tying with the runners-up.
-  const baseEnd = Math.max(0, Math.min(1, strategy.mean_mrr_growth / maxGrowth));
+  const baseEnd = Math.max(0, Math.min(1, raceValue(strategy, mrrDegenerate) / maxGrowth));
   const normalizedEnd = isWinner ? Math.min(0.92, baseEnd * 1.3 + 0.1) : baseEnd * 0.85;
   const N = 30;
   const visibleSamples = Math.max(2, Math.floor(progress * N));

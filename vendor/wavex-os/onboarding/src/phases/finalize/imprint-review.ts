@@ -55,11 +55,17 @@ Dry-run window: 14 days from ${connectors.dry_run_expires_at}.
 Dry-run gates (tasks held dry): ${workflows.dry_run_gates.length} tasks across the swarm.
 
 MC winner: ${mcWinner.strategy_id}
+  model mode: ${mcWinner.model_mode ?? "growth"}
   sharpe: ${mcWinner.sharpe.toFixed(2)}
   mean MRR growth (${mcWinner.run_params.horizon_cycles} cycles): ${(mcWinner.mean_mrr_growth * 100).toFixed(0)}%
+  mean activation growth: ${typeof mcWinner.mean_activation_growth === "number" ? `${(mcWinner.mean_activation_growth * 100).toFixed(1)}%` : "—"}
+  mean burn multiple: ${mcWinner.mean_burn_multiple.toFixed(2)}
   p(auto-catalytic): ${(mcWinner.p_auto_catalytic * 100).toFixed(0)}%
   p(ruin): ${(mcWinner.p_ruin * 100).toFixed(0)}%
   cycles-to-critical: ${mcWinner.mean_cycles_to_critical ?? "—"}
+  IMPORTANT: when model mode is pre_scale, MRR is HELD FLAT by design — never
+  present 0% MRR growth / Sharpe 0.00 as a finding; the ranking is driven by
+  activation growth and burn multiple. Cite THOSE numbers in ¶3.
 
 PARAGRAPH STRUCTURE
 ¶1 (who + current state): name the org, describe what it does, where it is on product + revenue, what the GTM motion looks like.
@@ -143,7 +149,12 @@ function fallbackSummary(
   return [
     `${r.pillar_1?.org_name ?? "The organization"} is ${r.pillar_1?.company_context?.slice(0, 180) ?? "operating without a current company context on file"}. It is in the ${r.pillar_3?.product_state ?? "unknown"} stage (${r.pillar_3?.stage ?? "—"}) with a ${r.pillar_4?.gtm_profile_enum ?? "unclassified"} GTM motion. Board notifications route via ${r.pillar_5?.comm_channel ?? "email_only"}.`,
     `${s.topology.active_count} of ${s.topology.total_base_roster} agents are active. Parked: ${parked.join(", ") || "none"}. Disabled: ${disabled.join(", ") || "none"}. Connectors required at launch: ${c.required.map((x) => x.id).join(", ")}. ${c.suggested.length > 0 ? `Suggested but optional: ${c.suggested.map((x) => x.id).join(", ")}.` : ""}`,
-    `Monte Carlo over ${mc.run_params.n_runs} runs × ${mc.run_params.horizon_cycles} cycles recommends the ${mc.strategy_id} strategy (Sharpe ${mc.sharpe.toFixed(2)}, mean MRR growth ${(mc.mean_mrr_growth * 100).toFixed(0)}% over horizon, p(auto-catalytic) ${(mc.p_auto_catalytic * 100).toFixed(0)}%${mc.mean_cycles_to_critical !== null ? `, expected ${mc.mean_cycles_to_critical.toFixed(1)} cycles to criticality` : ""}).`,
+    // Pre-scale runs hold MRR flat BY DESIGN, so MRR-based stats read as
+    // all-zero placeholders and the imprint looked fake (operator QA,
+    // 2026-06-10). Lead with the stat that actually drove the ranking.
+    mc.model_mode === "pre_scale" && typeof mc.mean_activation_growth === "number"
+      ? `Monte Carlo over ${mc.run_params.n_runs} runs × ${mc.run_params.horizon_cycles} cycles (pre-scale model: MRR held flat by design; activation is the lever that compounds at this stage) recommends the ${mc.strategy_id} strategy on a projected activation lift of ${(mc.mean_activation_growth * 100).toFixed(1)}% at a mean burn multiple of ${mc.mean_burn_multiple.toFixed(2)}. ${mc.rationale}`
+      : `Monte Carlo over ${mc.run_params.n_runs} runs × ${mc.run_params.horizon_cycles} cycles recommends the ${mc.strategy_id} strategy (Sharpe ${mc.sharpe.toFixed(2)}, mean MRR growth ${(mc.mean_mrr_growth * 100).toFixed(0)}% over horizon, p(auto-catalytic) ${(mc.p_auto_catalytic * 100).toFixed(0)}%${mc.mean_cycles_to_critical !== null ? `, expected ${mc.mean_cycles_to_critical.toFixed(1)} cycles to criticality` : ""}).`,
     `The system runs dry until ${c.dry_run_expires_at} — ${w.dry_run_gates.length} tasks across the swarm are gated and will log intended output without writing externally. Review the first round of proposals via ${r.pillar_5?.comm_channel ?? "your configured channel"} before flipping dry_run off.`,
   ].join("\n\n");
 }

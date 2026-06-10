@@ -128,6 +128,21 @@ export default function MissionControl() {
           <span className="text-dim" style={{ fontSize: 12 }}>· Mission Control</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "1.25rem" }}>
+          <Link
+            to="/book"
+            style={{
+              fontSize: 13,
+              fontWeight: 600,
+              padding: "6px 14px",
+              background: "var(--accent)",
+              color: "#08221d",
+              borderRadius: 6,
+              textDecoration: "none",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Book Experiences
+          </Link>
           <div data-tour="mc-company"><CompanyPicker /></div>
           <div data-tour="mc-health"><HealthStrip /></div>
         </div>

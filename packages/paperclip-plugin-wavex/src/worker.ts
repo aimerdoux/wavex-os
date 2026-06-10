@@ -248,6 +248,64 @@ const plugin = definePlugin({
       },
     );
 
+    // Roadmap / workflows map — the big workflows ignition seeds as
+    // "[Roadmap] …" issues, each driving named KPIs through child issues.
+    // Reads Paperclip directly (no wavex-os-server hop): roadmap lanes with
+    // owner, status, KPIs moved, and child-issue progress.
+    ctx.data.register("mission-control-roadmap", async ({ companyId }) => {
+      const id = String(companyId ?? "");
+      if (!id) return { ok: false, lanes: [], source: "no-company" };
+      try {
+        const [issuesRes, agentsRes] = await Promise.all([
+          localFetch(`${PAPERCLIP_BASE}/api/companies/${encodeURIComponent(id)}/issues`),
+          localFetch(`${PAPERCLIP_BASE}/api/companies/${encodeURIComponent(id)}/agents`),
+        ]);
+        if (!issuesRes.ok) return { ok: false, lanes: [], source: "paperclip-error", status: issuesRes.status };
+        const issues = (await issuesRes.json()) as Array<{
+          id: string;
+          parentId?: string | null;
+          identifier?: string | null;
+          title: string;
+          status: string;
+          priority?: string | null;
+          assigneeAgentId?: string | null;
+          description?: string | null;
+          updatedAt?: string | null;
+        }>;
+        const agents = agentsRes.ok
+          ? ((await agentsRes.json()) as Array<{ id: string; name: string }>)
+          : [];
+        const agentName = new Map(agents.map((a) => [a.id, a.name]));
+        const roadmap = issues.filter((i) => /^\[Roadmap\]/i.test(i.title) && i.status !== "cancelled");
+        const lanes = roadmap.map((lane) => {
+          const children = issues.filter((i) => i.parentId === lane.id && i.status !== "cancelled");
+          const done = children.filter((i) => i.status === "done").length;
+          const inProgress = children.filter((i) => i.status === "in_progress" || i.status === "in_review").length;
+          // ignition writes "**KPIs this moves:** a, b" into the description
+          const kpiMatch = /KPIs this moves:\*{0,2}\s*([^\n]+)/i.exec(lane.description ?? "");
+          const kpis = (kpiMatch?.[1] ?? "")
+            .replace(/\*/g, "")
+            .split(",")
+            .map((s) => s.trim())
+            .filter((s) => s.length > 0 && s.toLowerCase() !== "n/a");
+          return {
+            id: lane.id,
+            identifier: lane.identifier ?? null,
+            title: lane.title.replace(/^\[Roadmap\]\s*/i, ""),
+            status: lane.status,
+            priority: lane.priority ?? null,
+            owner: lane.assigneeAgentId ? (agentName.get(lane.assigneeAgentId) ?? null) : null,
+            kpis,
+            children: { total: children.length, done, inProgress },
+            updatedAt: lane.updatedAt ?? null,
+          };
+        });
+        return { ok: true, lanes, source: "paperclip" };
+      } catch (err) {
+        return { ok: false, lanes: [], source: "exception", error: String(err) };
+      }
+    });
+
     ctx.data.register("mission-control-tab-counts", async ({ companyId }) => {
       const cfg = (await ctx.config.get()) as PluginConfig | null;
       const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
@@ -856,25 +914,98 @@ const plugin = definePlugin({
         );
         if (!r.ok) return { ok: false, status: r.status, error: `HTTP ${r.status}` };
         // composio-shim/initOAuth returns `{ url, pendingConnectionId,
-        // needsLiveWiring? }` — NOT `redirectUrl`. needsLiveWiring is
-        // truthy when WAVEX_COMPOSIO_DISABLED=1 (default in dev) or when
-        // the hub session can't be obtained.
+        // needsLiveWiring?, reason? }` — NOT `redirectUrl`. The reason field
+        // distinguishes real causes so we stop mislabelling everything as
+        // "Composio is disabled" (QA finding 2026-06-10).
         const body = (await r.json()) as {
           url?: string | null;
           pendingConnectionId?: string | null;
           needsLiveWiring?: boolean;
+          reason?: "disabled" | "requires_custom_credentials" | "requires_initiation_fields" | "authorize_failed";
         };
+        if (body.reason === "requires_custom_credentials" || body.reason === "requires_initiation_fields") {
+          return {
+            ok: false,
+            needsLiveWiring: false,
+            reason: body.reason,
+            error:
+              body.reason === "requires_initiation_fields"
+                ? "This connector needs a few details before OAuth can start (e.g. an account ID). Fill them in the connector's form."
+                : "This connector has no one-click OAuth on Composio — it needs your own credentials (API key or OAuth app). Add them via the connector's credential form.",
+          };
+        }
         if (body.needsLiveWiring || !body.url) {
           return {
             ok: false,
             needsLiveWiring: true,
-            error: "Composio is disabled. Set COMPOSIO_API_KEY + WAVEX_COMPOSIO_DISABLED=0 to enable live OAuth.",
+            reason: body.reason ?? "disabled",
+            error:
+              body.reason === "authorize_failed"
+                ? "Composio OAuth initiation failed (live call error). Check the wavex-os-server logs and retry."
+                : "Composio is disabled. Set COMPOSIO_API_KEY + WAVEX_COMPOSIO_DISABLED=0 to enable live OAuth.",
           };
         }
         return {
           ok: true,
           redirectUrl: body.url,
           pendingConnectionId: body.pendingConnectionId ?? null,
+        };
+      } catch (err) {
+        return { ok: false, error: String(err) };
+      }
+    });
+
+    // Custom-credentials flow for toolkits without Composio-managed OAuth
+    // (Directory shows a credential form instead of dead-ending).
+    ctx.actions.register("connectors-credential-requirements", async (params) => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      const slug = String(params.slug ?? "");
+      const fieldsFor = params.fieldsFor === "initiation" ? "initiation" : "all";
+      if (!slug) return { ok: false, error: "missing slug" };
+      try {
+        const r = await localFetch(
+          `${base}/wavex-os/onboarding/connectors/credential-requirements/${encodeURIComponent(slug)}?fieldsFor=${fieldsFor}`,
+        );
+        if (!r.ok) return { ok: false, error: `HTTP ${r.status}` };
+        return await r.json();
+      } catch (err) {
+        return { ok: false, error: String(err) };
+      }
+    });
+
+    ctx.actions.register("connectors-connect-credentials", async (params) => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      const id = String(params.companyId ?? "");
+      const slug = String(params.slug ?? "");
+      const authScheme = String(params.authScheme ?? "");
+      const credentials = (params.credentials ?? {}) as Record<string, string>;
+      if (!id || !slug || !authScheme) return { ok: false, error: "missing companyId/slug/authScheme" };
+      try {
+        const r = await localFetch(`${base}/wavex-os/onboarding/connectors/connect-with-credentials`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ companyId: id, toolkitSlug: slug, authScheme, credentials }),
+        });
+        if (!r.ok) return { ok: false, status: r.status, error: `HTTP ${r.status}` };
+        const body = (await r.json()) as {
+          url?: string | null;
+          pendingConnectionId?: string | null;
+          status?: string | null;
+          needsLiveWiring?: boolean;
+          reason?: string;
+        };
+        if (body.needsLiveWiring) {
+          return { ok: false, reason: body.reason ?? "authorize_failed", error: "Credential connect failed — check the wavex-os-server logs (likely invalid credentials or scheme)." };
+        }
+        // Key-style schemes complete without a redirect; custom OAuth apps
+        // still hand back a URL to finish in the browser.
+        return {
+          ok: true,
+          redirectUrl: body.url ?? null,
+          pendingConnectionId: body.pendingConnectionId ?? null,
+          connectionStatus: body.status ?? null,
         };
       } catch (err) {
         return { ok: false, error: String(err) };

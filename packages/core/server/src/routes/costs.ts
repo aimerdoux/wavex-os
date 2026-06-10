@@ -20,6 +20,8 @@ import {
 } from "../services/index.js";
 import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
 import { fetchAllQuotaWindows } from "../services/quota-windows.js";
+import { getGovernorStatus } from "../services/run-governor.js";
+import { emitInferenceHook, type InferenceHookEvent } from "../services/inference-hooks.js";
 import { badRequest } from "../errors.js";
 import type { PluginWorkerManager } from "../services/plugin-worker-manager.js";
 
@@ -232,6 +234,61 @@ export function costRoutes(
     }
     const results = await fetchAllQuotaWindows();
     res.json(results);
+  });
+
+  // Run-governor status: live quota utilization mapped to the scheduling
+  // allowance tier (open / conserve / critical_only / frozen). Read by the
+  // dashboard quota bar and by operators deciding whether to resume fleets.
+  router.get("/governor/status", async (req, res) => {
+    const forceRefresh = req.query.refresh === "1";
+    const status = await getGovernorStatus(forceRefresh);
+    res.json(status);
+  });
+
+  // Cross-process inference-hook ingestion: lets sibling processes
+  // (wavex-os-server onboarding/bridge on :3101, edge functions) land their
+  // errors on the same inference surface as in-process events. Storm-capped
+  // and deduped inside emitInferenceHook; localhost-only by deployment.
+  router.post("/hooks/emit", async (req, res) => {
+    const body = req.body as Partial<InferenceHookEvent> | undefined;
+    const VALID_TYPES = new Set([
+      "run_failed",
+      "breaker_paused",
+      "connector_failed",
+      "run_completed",
+      "onboarding_error",
+    ]);
+    if (!body?.companyId || !body.type || !VALID_TYPES.has(body.type)) {
+      res.status(400).json({ error: "type (valid hook type) + companyId required" });
+      return;
+    }
+    // Sibling processes (wavex-os-server) know companies by slug, not UUID —
+    // resolve "wavexcard" -> the company whose name ends with "/wavexcard"
+    // (or equals it) so their errors can land on the inference surface.
+    let resolvedCompanyId = body.companyId;
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.companyId);
+    if (!isUuid) {
+      const slug = body.companyId.toLowerCase();
+      const all = await companies.list();
+      const match = all.find(
+        (c: { id: string; name: string }) =>
+          c.name.toLowerCase() === slug || c.name.toLowerCase().endsWith(`/${slug}`),
+      );
+      if (!match) {
+        res.status(404).json({ error: `no company matches slug '${body.companyId}'` });
+        return;
+      }
+      resolvedCompanyId = match.id;
+    }
+    emitInferenceHook(db, {
+      type: body.type,
+      companyId: resolvedCompanyId,
+      agentId: body.agentId ?? null,
+      runId: body.runId ?? null,
+      errorCode: body.errorCode ?? null,
+      detail: body.detail ?? null,
+    });
+    res.status(202).json({ accepted: true });
   });
 
   router.get("/companies/:companyId/budgets/overview", async (req, res) => {

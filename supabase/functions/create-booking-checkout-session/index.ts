@@ -85,6 +85,12 @@ Deno.serve(async (req: Request) => {
     return json({ error: "missing_fields" }, 400);
   }
 
+  // For wallet-auth users, user.email is a proxy address (@wallet.wavex.app).
+  // real_email in user_metadata is the actual billing address — use it for Stripe
+  // customer lookup so wallet sessions all resolve to the same customer record.
+  const realEmail =
+    (userData.user.user_metadata?.real_email as string | undefined) ?? email;
+
   // Load the booking intent via RPC (wavex_os schema is not in PostgREST exposed list;
   // all wavex_os table access goes through public-schema security-definer RPCs).
   const { data: intent, error: intentErr } = await sb.rpc("wavex_os_get_booking_intent", {
@@ -92,7 +98,14 @@ Deno.serve(async (req: Request) => {
   });
 
   if (intentErr || !intent) return json({ error: "intent_not_found" }, 404);
-  if (intent.user_id && intent.user_id !== userId) return json({ error: "forbidden" }, 403);
+
+  // Ownership check. Linked intents: user_id must match. Anon intents: caller's
+  // verified auth email must match the email stored at intent creation (WAV-52).
+  if (intent.user_id) {
+    if (intent.user_id !== userId) return json({ error: "forbidden" }, 403);
+  } else if (intent.user_email) {
+    if (!email || intent.user_email !== email.toLowerCase()) return json({ error: "forbidden" }, 403);
+  }
   if (intent.status === "confirmed") return json({ error: "already_confirmed" }, 409);
   if (intent.status === "cancelled") return json({ error: "intent_cancelled" }, 410);
 
@@ -105,12 +118,21 @@ Deno.serve(async (req: Request) => {
     // Session expired or completed — fall through to create a fresh one.
   }
 
-  // Look up or create Stripe customer.
-  const customers = await stripe.customers.list({ email, limit: 1 });
-  let customerId = customers.data[0]?.id;
+  // Look up or create Stripe customer keyed by supabase_user_id (most reliable),
+  // falling back to realEmail. Using the metadata search avoids creating duplicate
+  // customers for wallet-auth users who have a proxy auth email.
+  const searchResult = await stripe.customers.search({
+    query: `metadata['supabase_user_id']:'${userId}'`,
+    limit: 1,
+  });
+  let customerId = searchResult.data[0]?.id;
+  if (!customerId) {
+    const customers = await stripe.customers.list({ email: realEmail ?? undefined, limit: 1 });
+    customerId = customers.data[0]?.id;
+  }
   if (!customerId) {
     const newCustomer = await stripe.customers.create({
-      email,
+      email: realEmail ?? undefined,
       metadata: { supabase_user_id: userId },
     });
     customerId = newCustomer.id;
@@ -134,6 +156,9 @@ Deno.serve(async (req: Request) => {
     metadata: {
       booking_intent_id,
       supabase_user_id: userId,
+      experience_id: intent.experience_id ?? "",
+      experience_price_cents: String(intent.experience_price_cents ?? ""),
+      intent_created_at: intent.created_at ?? "",
     },
     client_reference_id: userId,
     success_url: success_url + (success_url.includes("?") ? "&" : "?") + "session_id={CHECKOUT_SESSION_ID}",
@@ -156,6 +181,26 @@ Deno.serve(async (req: Request) => {
   const rpcResult = rpcData as { ok?: boolean; reason?: string } | null;
   if (rpcResult && !rpcResult.ok) {
     console.warn("booking intent status transition failed", rpcResult.reason);
+  }
+
+  const mpToken = Deno.env.get("MIXPANEL_PROJECT_TOKEN");
+  if (mpToken) {
+    await fetch("https://api.mixpanel.com/track", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "text/plain" },
+      body: JSON.stringify([{
+        event: "Payment Started",
+        properties: {
+          token: mpToken,
+          distinct_id: userId,
+          intent_id: booking_intent_id,
+          experience_id: intent.experience_id ?? null,
+          price_cents: intent.experience_price_cents ?? null,
+          stripe_session_id: session.id,
+          time: Math.floor(Date.now() / 1000),
+        },
+      }]),
+    }).catch((err: unknown) => console.error("mixpanel track Payment Started failed", err));
   }
 
   return json({ url: session.url });

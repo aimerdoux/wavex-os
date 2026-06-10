@@ -897,6 +897,32 @@ async function hireOne(
     },
     runtimeConfig: { heartbeat: heartbeatConfigForSlot(slot, swarmPct) },
   };
+
+  // Optional: run this role agent under the Plateau bounded orchestrator+worker
+  // executor instead of linear claude_local. Flag-gated + fully reversible —
+  // default OFF (unset flag → claude_local, the existing behavior). When
+  // WAVEX_SPAWN_ADAPTER=plateau_local, the role's full instruction bundle becomes
+  // the agent's GOAL; the plateau_local adapter composes it via buildRoleGoal and
+  // the driver's `role` mode runs the general bounded loop (fresh discardable
+  // workers, bounded signal) so the agent does ITS job under the pattern.
+  if (process.env.WAVEX_SPAWN_ADAPTER === "plateau_local") {
+    payload.adapterType = "plateau_local";
+    payload.adapterConfig = {
+      plateauDir: process.env.WAVEX_PLATEAU_DIR ?? "/Users/geniex/bmacp-trunk/plateau",
+      mode: "role",
+      targetSeconds: Number(process.env.WAVEX_PLATEAU_TARGET_SECONDS ?? 7200),
+      maxSteps: Number(process.env.WAVEX_PLATEAU_MAX_STEPS ?? 80),
+      ...(process.env.WAVEX_PLATEAU_WORKER_MODEL
+        ? { workerModel: process.env.WAVEX_PLATEAU_WORKER_MODEL }
+        : {}),
+      // Self-contained role charter — the goal source for buildRoleGoal, so the
+      // executor works regardless of how the core derives instructionsFilePath
+      // for a non-claude_local adapter type.
+      promptTemplate: [bundleMd, contextMd, workflowMd].filter(Boolean).join("\n\n---\n\n"),
+      command: "uv",
+    };
+  }
+
   if (reportsToId) payload.reportsTo = reportsToId;
 
   const r = await fetch(`${paperclipUrl}/api/companies/${paperclipCompanyId}/agent-hires`, {

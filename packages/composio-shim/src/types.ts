@@ -32,4 +32,34 @@ export interface OAuthInitResult {
   /** Set when live mode is on but real Composio wiring isn't in place
    *  yet. UI surfaces a "needs setup" callout instead of failing silently. */
   needsLiveWiring?: boolean;
+  /** Why OAuth init produced no URL, so the UI shows an accurate message
+   *  instead of mislabelling every failure as "Composio is disabled":
+   *  - "disabled": no key / WAVEX_COMPOSIO_DISABLED on
+   *  - "requires_custom_credentials": Composio has no managed OAuth for this
+   *    toolkit — the customer must supply their own credentials via the
+   *    credential-fields flow
+   *  - "requires_initiation_fields": managed OAuth exists but the connected
+   *    account needs pre-OAuth fields (e.g. Google Ads Customer ID,
+   *    WhatsApp WABA ID) — collect them, then initiate managed OAuth
+   *  - "authorize_failed": live Composio call failed (transient/other) */
+  reason?: "disabled" | "requires_custom_credentials" | "requires_initiation_fields" | "authorize_failed";
+}
+
+/** One input the customer must fill to connect a toolkit that has no
+ *  Composio-managed OAuth (API key, bearer token, custom OAuth app…). */
+export interface CredentialField {
+  name: string;
+  displayName: string;
+  type: string;
+  required: boolean;
+  description?: string | null;
+}
+
+export interface CredentialRequirements {
+  ok: boolean;
+  toolkitSlug: string;
+  /** chosen auth scheme, e.g. "API_KEY" | "BEARER_TOKEN" | "BASIC" | "OAUTH2" */
+  authScheme: string | null;
+  fields: CredentialField[];
+  error?: string;
 }

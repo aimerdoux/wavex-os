@@ -287,5 +287,60 @@ export async function bridgeKpis(
     });
   }
 
-  return { kpis: CANONICAL_KPIS.length };
+  // Slice 2b — the user's PRIMARY GOAL from onboarding becomes a first-class
+  // scoreboard KPI with its real baseline + target. Without this, Mission
+  // Control only observes generic unit economics and the mission the user
+  // actually typed during onboarding never reaches the observer interface.
+  // (Same defensive manifest cast as bridge/paperclip-handoff.ts — `goal` is
+  // not yet on the upstream CompanyManifest type.)
+  const withGoal = manifest as CompanyManifest & {
+    goal?: { kpiId?: string; current?: number; target?: number; days?: number };
+    meta_goal?: string;
+  };
+  const goal = withGoal.goal ?? {};
+  let extraKpis = 0;
+  if (goal.kpiId) {
+    const toMicros = (v: number) => BigInt(Math.round(v * 1_000_000));
+    const isCanonical = CANONICAL_KPIS.some((k) => k.kpiId === goal.kpiId);
+    if (isCanonical) {
+      // Goal targets a canonical KPI (e.g. monthly_recurring_revenue):
+      // stamp the user's target + window onto the canonical row.
+      await db
+        .update(companyKpis)
+        .set({
+          targetMicros: typeof goal.target === "number" ? toMicros(goal.target) : null,
+          windowDays: String(goal.days ?? 30),
+          ownerRole: "ceo",
+        })
+        .where(
+          sql`${companyKpis.companyId} = ${companyId} and ${companyKpis.kpiId} = ${goal.kpiId}`,
+        );
+    } else {
+      await db.insert(companyKpis).values({
+        companyId,
+        kpiId: goal.kpiId,
+        label: withGoal.meta_goal
+          ? `Primary goal — ${withGoal.meta_goal.slice(0, 80)}`
+          : `Primary goal (${goal.kpiId})`,
+        direction: "up",
+        targetMicros: typeof goal.target === "number" ? toMicros(goal.target) : null,
+        windowDays: String(goal.days ?? 30),
+        kpiOwnerAgentId: null,
+        ownerRole: "ceo",
+        createdAt: now,
+      });
+      extraKpis = 1;
+    }
+    // Baseline at the user's stated CURRENT value, not zero — progress on
+    // the scoreboard is measured from where the business actually starts.
+    await db.insert(kpiSnapshots).values({
+      companyId,
+      kpiName: goal.kpiId,
+      value: typeof goal.current === "number" ? toMicros(goal.current) : BigInt(0),
+      measuredAt: now,
+      metadata: { source: "activate_primary_goal_baseline", days: goal.days ?? null },
+    });
+  }
+
+  return { kpis: CANONICAL_KPIS.length + extraKpis };
 }

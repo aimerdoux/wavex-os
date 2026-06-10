@@ -15,9 +15,18 @@
  *    WAVEX_BOOKING_INTENT_TIMEOUT_MINUTES — integer (default 30)
  */
 
+import { emitMixpanel } from "../lib/mixpanel.js";
+
 interface SupabaseConfig {
   url: string;
   key: string;
+}
+
+interface CancelledIntent {
+  id: string;
+  user_id: string | null;
+  experience_id: string | null;
+  experience_price_cents: number | null;
 }
 
 function supabaseConfig(): SupabaseConfig | null {
@@ -34,7 +43,9 @@ function envInt(name: string, fallback: number): number {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
-async function cancelStaleIntents(cfg: SupabaseConfig): Promise<number> {
+async function cancelStaleIntents(
+  cfg: SupabaseConfig,
+): Promise<{ cancelled: number; intents: CancelledIntent[] }> {
   const timeoutMinutes = envInt("WAVEX_BOOKING_INTENT_TIMEOUT_MINUTES", 30);
   const res = await fetch(
     `${cfg.url}/rest/v1/rpc/wavex_os_cancel_stale_booking_intents`,
@@ -52,6 +63,31 @@ async function cancelStaleIntents(cfg: SupabaseConfig): Promise<number> {
     const detail = await res.text().catch(() => "");
     throw new Error(`wavex_os_cancel_stale_booking_intents failed: ${res.status} ${detail}`);
   }
+  const data = (await res.json().catch(() => null)) as {
+    cancelled?: number;
+    intents?: CancelledIntent[];
+  } | null;
+  return { cancelled: data?.cancelled ?? 0, intents: data?.intents ?? [] };
+}
+
+async function cancelExpiredPendingPaymentIntents(cfg: SupabaseConfig): Promise<number> {
+  // Stripe sessions expire in 24 h; intents >25 h old are definitively abandoned.
+  const res = await fetch(
+    `${cfg.url}/rest/v1/rpc/wavex_os_cancel_expired_pending_payment_intents`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: cfg.key,
+        Authorization: `Bearer ${cfg.key}`,
+      },
+      body: JSON.stringify({ p_older_than_hours: 25 }),
+    },
+  );
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`wavex_os_cancel_expired_pending_payment_intents failed: ${res.status} ${detail}`);
+  }
   const data = (await res.json().catch(() => null)) as { cancelled?: number } | null;
   return data?.cancelled ?? 0;
 }
@@ -67,9 +103,33 @@ export function startBookingIntentCleanupScheduler(): void {
     const cfg = supabaseConfig();
     if (!cfg) return;
     try {
-      const cancelled = await cancelStaleIntents(cfg);
+      const [{ cancelled, intents }, expiredCancelled] = await Promise.all([
+        cancelStaleIntents(cfg),
+        cancelExpiredPendingPaymentIntents(cfg).catch((e: unknown) => {
+          console.error(`[booking-intent-cleanup] expired-pending-payment run threw: ${e instanceof Error ? e.message : String(e)}`);
+          return 0;
+        }),
+      ]);
       if (cancelled > 0) {
         console.info(`[booking-intent-cleanup] cancelled ${cancelled} stale pending intent(s)`);
+        const mpToken = process.env.MIXPANEL_PROJECT_TOKEN;
+        if (mpToken) {
+          await Promise.all(
+            intents.map((intent) =>
+              emitMixpanel(mpToken, "Booking Cancelled", {
+                distinct_id: intent.user_id ?? `anon_${intent.id}`,
+                intent_id: intent.id,
+                experience_id: intent.experience_id ?? null,
+                price_cents: intent.experience_price_cents ?? null,
+                cancel_reason: "timeout",
+                time: Math.floor(Date.now() / 1000),
+              }),
+            ),
+          );
+        }
+      }
+      if (expiredCancelled > 0) {
+        console.info(`[booking-intent-cleanup] cancelled ${expiredCancelled} expired pending_payment intent(s)`);
       }
     } catch (e) {
       console.error(

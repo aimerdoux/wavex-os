@@ -94,12 +94,25 @@ Deno.serve(async (req: Request) => {
     return json({ url: portalSession.url, existing: true }, 409);
   }
 
-  // Look up or create Stripe customer keyed by user id.
-  const customers = await stripe.customers.list({ email: email ?? undefined, limit: 1 });
-  let customerId = customers.data[0]?.id;
+  // For wallet-auth users, user.email is a proxy address (@wallet.wavex.app).
+  // real_email in user_metadata is the actual billing address.
+  const realEmail =
+    (userData.user.user_metadata?.real_email as string | undefined) ?? email ?? undefined;
+
+  // Look up or create Stripe customer keyed by supabase_user_id (most reliable).
+  // Falls back to realEmail so wallet-auth users always resolve to the same customer.
+  const searchResult = await stripe.customers.search({
+    query: `metadata['supabase_user_id']:'${userId}'`,
+    limit: 1,
+  });
+  let customerId = searchResult.data[0]?.id;
+  if (!customerId) {
+    const customers = await stripe.customers.list({ email: realEmail, limit: 1 });
+    customerId = customers.data[0]?.id;
+  }
   if (!customerId) {
     const created = await stripe.customers.create({
-      email: email ?? undefined,
+      email: realEmail,
       metadata: { supabase_user_id: userId },
     });
     customerId = created.id;

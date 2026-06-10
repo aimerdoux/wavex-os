@@ -108,6 +108,8 @@ export function invokeMonteCarlo(
     p_auto_catalytic: winnerStats.p_auto_catalytic,
     p_ruin: winnerStats.p_ruin,
     mean_cycles_to_critical: winnerStats.mean_cycles_to_critical,
+    mean_activation_growth: winnerStats.mean_activation_growth,
+    model_mode: mode,
     rationale: report.winner.rationale,
     run_params: { horizon_cycles: horizon, n_runs, seed },
   };

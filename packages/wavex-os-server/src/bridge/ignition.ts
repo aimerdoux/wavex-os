@@ -45,6 +45,7 @@ export interface IgnitionState {
     seed_roadmap: { status: IgnitionStepStatus; created: string[]; note?: string };
     kickoff_probe: { status: IgnitionStepStatus; ceo_run_id?: string; cos_run_id?: string; note?: string };
     kickoff_routine: { status: IgnitionStepStatus; routine_id?: string; trigger_id?: string; note?: string };
+    middleware_charter: { status: IgnitionStepStatus; note?: string };
     validate_coverage: { status: IgnitionStepStatus; gaps: string[]; note?: string };
     stagger_heartbeats: { status: IgnitionStepStatus; offsets: Record<string, number>; note?: string };
   };
@@ -123,6 +124,7 @@ function freshState(companyId: string): IgnitionState {
       seed_roadmap: { status: "pending", created: [] },
       kickoff_probe: { status: "pending" },
       kickoff_routine: { status: "pending" },
+      middleware_charter: { status: "pending" },
       validate_coverage: { status: "pending", gaps: [] },
       stagger_heartbeats: { status: "pending", offsets: {} },
     },
@@ -558,6 +560,68 @@ export async function ignite(
     }
   } else if (!paperclipCompanyId) {
     state.steps.kickoff_routine = { status: "skipped", note: "no Paperclip company id" };
+  }
+  await writeState(state);
+
+  // ── Step 4c: middleware supervisor charter (silent agent) ─────────────
+  // The Chief of Staff becomes the in-fleet MIDDLEWARE agency from minute
+  // one: it enforces meta-prompt hygiene (DEFER-UNTIL cadence, no duplicate
+  // titles, revenue-proximate priorities, evidence-cited claims), watches
+  // the run governor tier, and acts as the inference-hook fixer target.
+  // Previously this charter had to be filed and assigned by a human after
+  // every onboarding (observed 2026-06-10) — now ignition installs it.
+  {
+    const cosAgentId = slotToPaperclipId.get("ceo.chief-of-staff");
+    if (paperclipCompanyId && cosAgentId) {
+      try {
+        const charterResp = await paperclipFetch(`/api/companies/${paperclipCompanyId}/issues`, {
+          method: "POST",
+          body: JSON.stringify({
+            title: "MIDDLEWARE: Fleet supervisor charter — Chief of Staff owns in-flight integrity",
+            description: [
+              "You are the middleware agency between the platform and this fleet — silent by",
+              "design: you work through issue operations and prompt enforcement, not chatter.",
+              "",
+              "Cycle (repeat; file the next cycle as backlog with a top line",
+              "'DEFER-UNTIL: <ISO timestamp +24h>'):",
+              "1. GOVERNOR: GET http://localhost:3100/api/governor/status — record tier +",
+              "   utilization in your cycle comment. At conserve or worse, verify only",
+              "   high/critical issues are in_progress; defer or downgrade the rest.",
+              "2. HOOKS: when woken with reason '[inference-hook] …', diagnose the named",
+              "   failure (GET /api/heartbeat-runs/{runId}), apply the smallest safe fix or",
+              "   file ONE issue to the right owner. Never blindly retry the failed action.",
+              "3. META-PROMPTS: enforce on every agent — next-cycle issues carry DEFER-UNTIL;",
+              "   never file duplicate titles (the API returns 409 — comment on the existing",
+              "   issue); priorities reflect revenue proximity; claims cite evidence.",
+              "4. GRADING: grade closed cycles A–F against their stated acceptance criteria",
+              "   in a weekly digest on YOUR issue (never comment on done issues).",
+              "STOP: platform unreachable 2 consecutive cycles, or the operator posts STOP.",
+            ].join("\n"),
+            assigneeAgentId: cosAgentId,
+            priority: "high",
+            status: "todo",
+          }),
+        });
+        if (!charterResp.ok) {
+          recordErr(state, "middleware_charter", `POST issues returned ${charterResp.status}`);
+          state.steps.middleware_charter = { status: "error", note: `POST ${charterResp.status}` };
+        } else {
+          const charter = (await charterResp.json()) as { id: string; identifier?: string };
+          state.steps.middleware_charter = {
+            status: "ok",
+            note: charter.identifier ?? charter.id,
+          };
+        }
+      } catch (e) {
+        recordErr(state, "middleware_charter", (e as Error).message);
+        state.steps.middleware_charter = { status: "error", note: (e as Error).message };
+      }
+    } else {
+      state.steps.middleware_charter = {
+        status: "skipped",
+        note: paperclipCompanyId ? "no chief-of-staff slot" : "no Paperclip company id",
+      };
+    }
   }
   await writeState(state);
 

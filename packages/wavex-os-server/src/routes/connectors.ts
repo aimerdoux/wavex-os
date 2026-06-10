@@ -33,8 +33,11 @@ import {
   getConnectionStatus,
   pingConnection,
   listConnections,
+  getCredentialRequirements,
+  connectWithCredentials,
 } from "@wavex-os/composio-shim";
 import { getInferenceMode } from "@wavex-os/inference-adapter";
+import { emitInferenceHookEvent } from "../inference-hooks-client.js";
 
 /** When the customer's stack is in hosted mode (their installer pointed
  *  WAVEX_INFERENCE_HUB_URL at the operator's Mac mini), we PROXY the
@@ -65,7 +68,7 @@ async function proxyToHubInitiate(args: {
   installId: string;
   email: string;
   redirectBackUrl?: string;
-}): Promise<{ url: string | null; pendingConnectionId: string | null; needsLiveWiring?: boolean } | null> {
+}): Promise<{ url: string | null; pendingConnectionId: string | null; needsLiveWiring?: boolean; reason?: string } | null> {
   const session = await hubSessionToken(args);
   if (!session) {
     if (getInferenceMode() !== "hosted") return null;
@@ -226,6 +229,17 @@ export function registerConnectorRoutes(app: FastifyInstance): void {
         callbackUrl: cbUrl,
       });
 
+      // Real connector failures (not "needs credentials" classifications)
+      // land on the inference surface so the middleware fixer sees them.
+      if (result.needsLiveWiring && result.reason === "authorize_failed") {
+        emitInferenceHookEvent({
+          type: "connector_failed",
+          companyId,
+          errorCode: "composio_authorize_failed",
+          detail: `toolkit=${toolkitSlug}`,
+        });
+      }
+
       // Optimistically record pending in tools.json so the UI can poll
       // /wavex-os/onboarding/avatar/:id (which already returns tools) to
       // detect when this entry transitions to "connected".
@@ -245,6 +259,42 @@ export function registerConnectorRoutes(app: FastifyInstance): void {
         await writeToolsFile(avatarId, cur);
       }
 
+      return reply.send(result);
+    },
+  );
+
+  // ── 1a. Custom-credentials flow (toolkits without Composio-managed OAuth) ─
+  //
+  // GET returns the form fields the customer must fill (auth scheme +
+  // creation/initiation fields merged); POST creates a use_custom_auth
+  // auth config + connected account with those credentials. Backs the
+  // Directory's "requires_custom_credentials" path (e.g. Amplitude).
+  app.get<{ Params: { toolkitSlug: string }; Querystring: { fieldsFor?: string } }>(
+    "/wavex-os/onboarding/connectors/credential-requirements/:toolkitSlug",
+    async (req, reply) => {
+      const slug = (req.params.toolkitSlug ?? "").trim().toLowerCase();
+      if (!slug) return reply.code(400).send({ error: "toolkitSlug required" });
+      const fieldsFor = req.query.fieldsFor === "initiation" ? "initiation" : "all";
+      return reply.send(await getCredentialRequirements(slug, { fieldsFor }));
+    },
+  );
+
+  app.post<{
+    Body: {
+      companyId: string;
+      userId?: string;
+      toolkitSlug: string;
+      authScheme: string;
+      credentials: Record<string, string>;
+    };
+  }>(
+    "/wavex-os/onboarding/connectors/connect-with-credentials",
+    async (req, reply) => {
+      const { companyId, userId, toolkitSlug, authScheme, credentials } = req.body ?? {};
+      if (!companyId || !toolkitSlug || !authScheme || !credentials || Object.keys(credentials).length === 0) {
+        return reply.code(400).send({ error: "companyId + toolkitSlug + authScheme + credentials required" });
+      }
+      const result = await connectWithCredentials({ companyId, userId, toolkitSlug, authScheme, credentials });
       return reply.send(result);
     },
   );

@@ -55,6 +55,8 @@ import { trackAgentFirstHeartbeat } from "@paperclipai/shared/telemetry";
 import { getTelemetryClient } from "../telemetry.js";
 import { companySkillService } from "./company-skills.js";
 import { budgetService, type BudgetEnforcementScope } from "./budgets.js";
+import { evaluateRunClaim } from "./run-governor.js";
+import { emitInferenceHook, registerInferenceHookWaker } from "./inference-hooks.js";
 import { secretService } from "./secrets.js";
 import { resolveDefaultAgentWorkspaceDir, resolveManagedProjectWorkspaceDir } from "../home-paths.js";
 import {
@@ -257,6 +259,11 @@ const SESSIONED_LOCAL_ADAPTERS = new Set([
   "hermes_local",
   "opencode_local",
   "pi_local",
+  // External adapter that spawns a tracked local child and reports its pid
+  // via onSpawn. Without this entry the stale-run reaper marks its runs
+  // process_lost after staleThresholdMs even while the child pid is alive
+  // (observed 2026-06-10: three canary runs reaped at exactly ~5m01s).
+  "plateau_local",
 ]);
 const INLINE_BASE64_IMAGE_DATA_RE = /("type":"image","source":\{"type":"base64","data":")([A-Za-z0-9+/=]{1024,})(")/g;
 
@@ -2877,6 +2884,19 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       .returning()
       .then((rows) => rows[0] ?? null);
 
+    if (updated && (updated.status === "failed" || updated.status === "succeeded")) {
+      // Inference hook surface: terminal run states become events a
+      // configured fixer agent can react to (fire-and-forget, storm-capped).
+      emitInferenceHook(db, {
+        type: updated.status === "failed" ? "run_failed" : "run_completed",
+        companyId: updated.companyId,
+        agentId: updated.agentId,
+        runId: updated.id,
+        errorCode: updated.errorCode ?? null,
+        detail: updated.error ?? null,
+      });
+    }
+
     if (updated) {
       publishLiveEvent({
         companyId: updated.companyId,
@@ -3987,6 +4007,24 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
     }
 
     const issueId = readNonEmptyString(context.issueId);
+
+    const governorVerdict = await evaluateRunClaim(db, run, issueId ?? null);
+    if (governorVerdict.action === "cancel") {
+      logger.info(
+        { runId: run.id, agentId: run.agentId, tier: governorVerdict.tier, reason: governorVerdict.reason },
+        "claimQueuedRun: cancelled by run governor",
+      );
+      await cancelRunInternal(run.id, governorVerdict.reason);
+      return null;
+    }
+    if (governorVerdict.action === "defer") {
+      logger.info(
+        { runId: run.id, agentId: run.agentId, tier: governorVerdict.tier, reason: governorVerdict.reason },
+        "claimQueuedRun: deferred by run governor (stays queued)",
+      );
+      return null;
+    }
+
     if (issueId) {
       const activePauseHold = await treeControlSvc.getActivePauseHoldGate(run.companyId, issueId);
       const treeHoldInteractionWake = activePauseHold && await isVerifiedIssueTreeControlInteractionWake(db, {
@@ -7508,6 +7546,18 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
 
     await cancelPendingWakeupsForBudgetScope(scope);
   }
+
+  // Inference hook surface: hand the hook manager a wakeup entrypoint so a
+  // configured fixer agent can be woken on run_failed/breaker events without
+  // the hook module importing this service (avoids a cycle). Wakes go through
+  // the normal queue, so the run governor still gates them.
+  registerInferenceHookWaker(async ({ agentId, reason }) => {
+    await enqueueWakeup(agentId, {
+      source: "automation",
+      triggerDetail: "system",
+      reason,
+    });
+  });
 
   return {
     list: async (companyId: string, agentId?: string, limit?: number) => {

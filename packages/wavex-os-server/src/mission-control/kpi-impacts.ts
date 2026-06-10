@@ -19,8 +19,10 @@ import { randomUUID } from "node:crypto";
 import { and, desc, eq, isNull, lte, sql } from "drizzle-orm";
 import {
   type Db,
+  companyKpis,
   expectedKpiImpacts,
   getDb,
+  kpiSnapshots,
   type ExpectedKpiImpactInsert,
 } from "@wavex-os/db";
 import type {
@@ -300,6 +302,20 @@ export async function getScoreboard(
     list.push(row);
     byKpi.set(row.kpiId, list);
   }
+
+  // Seeded KPI definitions (company_kpis, written by activate's bridgeKpis:
+  // canonical unit economics + the user's primary onboarding goal). A fresh
+  // company has no expected_kpi_impacts yet, so without this the scoreboard
+  // rendered EMPTY and Mission Control looked detached from onboarding
+  // (QA finding 2026-06-10). Seeded KPIs appear immediately with zero
+  // impacts; impact aggregates overlay as agents declare them.
+  const seeded = await resolved
+    .select({ kpiId: companyKpis.kpiId })
+    .from(companyKpis)
+    .where(eq(companyKpis.companyId, companyId));
+  for (const { kpiId } of seeded) {
+    if (!byKpi.has(kpiId)) byKpi.set(kpiId, []);
+  }
   const now = new Date();
   return Array.from(byKpi.entries()).map(([kpiId, list]) => {
     let cumulativeEstimated = 0;
@@ -381,6 +397,35 @@ export async function getScoreboardWithHistory(
   const base = await getScoreboard(companyId, resolved);
   if (base.length === 0) return [];
 
+  // Seeded definitions + bridge baselines: activate writes the user's goal
+  // target onto company_kpis (micros) and a baseline into kpi_snapshots.
+  // Without these fallbacks a fresh company showed current 0 / target 0
+  // (e.g. an onboarding goal of MRR 5000 -> 15000 rendered as 0 -> 0).
+  const definitions = await resolved
+    .select({ kpiId: companyKpis.kpiId, targetMicros: companyKpis.targetMicros })
+    .from(companyKpis)
+    .where(eq(companyKpis.companyId, companyId));
+  const targetByKpi = new Map(
+    definitions
+      .filter((d) => d.targetMicros != null)
+      .map((d) => [d.kpiId, Number(d.targetMicros) / 1_000_000]),
+  );
+  const baselines = await resolved
+    .select()
+    .from(kpiSnapshots)
+    .where(eq(kpiSnapshots.companyId, companyId));
+  const baselineByKpi = new Map<string, { value: number; at: Date }>();
+  for (const row of baselines) {
+    const prev = baselineByKpi.get(row.kpiName);
+    const value = Number(row.value) / 1_000_000;
+    // >= so same-instant rows favor the later insert (activate writes the
+    // canonical 0 baseline and the user's stated goal baseline in the same
+    // transaction timestamp); non-zero stated baselines beat zero placeholders.
+    if (!prev || row.measuredAt >= prev.at && (value !== 0 || prev.value === 0)) {
+      baselineByKpi.set(row.kpiName, { value, at: row.measuredAt });
+    }
+  }
+
   const since =
     options.since ?? new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
   const snapshots = await resolved
@@ -421,13 +466,30 @@ export async function getScoreboardWithHistory(
         ? priorWindow.reduce((s, p) => s + p.value, 0) / priorWindow.length
         : 0;
     const delta = priorWindow.length > 0 ? current - priorAvg : 0;
+    const baseline = baselineByKpi.get(entry.kpiId);
+    // A sampled 0 with no measured impacts means "no recorder wired yet",
+    // not "the business is at zero" — prefer the user's stated onboarding
+    // baseline until a real non-zero measurement lands.
+    const resolvedCurrent =
+      last && (last.value !== 0 || entry.measuredImpacts > 0)
+        ? current
+        : (baseline?.value ?? (last ? current : entry.cumulativeActual));
+    const resolvedTarget =
+      entry.cumulativeEstimated !== 0
+        ? entry.cumulativeEstimated
+        : (targetByKpi.get(entry.kpiId) ?? entry.cumulativeEstimated);
+    const resolvedLastMeasuredAt =
+      lastMeasuredAt ?? (baseline ? baseline.at.toISOString() : null);
     return {
       ...entry,
-      current,
-      target: entry.cumulativeEstimated,
+      current: resolvedCurrent,
+      target: resolvedTarget,
       delta,
-      status: classifyStatus(entry.attainmentRatio),
-      lastMeasuredAt,
+      status:
+        entry.totalImpacts === 0 && resolvedTarget > 0
+          ? classifyStatus(resolvedTarget === 0 ? 0 : resolvedCurrent / resolvedTarget)
+          : classifyStatus(entry.attainmentRatio),
+      lastMeasuredAt: resolvedLastMeasuredAt,
       freshnessWarning,
       history,
     };

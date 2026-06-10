@@ -28,6 +28,8 @@ import {
 } from "@wavex-os/plugin-sdk-shim/ui";
 
 import { MissionControlStreamWidget } from "./MissionControlStreamWidget.js";
+import { MissionControlDeliverablesWidget } from "./MissionControlDeliverablesWidget.js";
+import { MissionControlRoadmapWidget } from "./MissionControlRoadmapWidget.js";
 import { MissionControlScoreboardWidget } from "./MissionControlScoreboardWidget.js";
 import { AccountabilityMap } from "./AccountabilityMap.js";
 import { PoolBHealthWidget } from "./PoolBHealthWidget.js";
@@ -45,7 +47,17 @@ const BORDER = "rgba(255,255,255,0.08)";
 const TEXT = "#ffffff";
 const TEXT_MUTED = "rgba(255,255,255,0.55)";
 
-type View = "decisions" | "stream" | "scoreboard" | "graph" | "chief" | "impact" | "ops" | "pool-b";
+type View =
+  | "decisions"
+  | "roadmap"
+  | "deliverables"
+  | "stream"
+  | "scoreboard"
+  | "graph"
+  | "chief"
+  | "impact"
+  | "ops"
+  | "pool-b";
 
 interface Tab {
   id: View;
@@ -55,6 +67,8 @@ interface Tab {
 
 const TABS: Tab[] = [
   { id: "decisions", label: "Decisions", hint: "what needs you" },
+  { id: "roadmap", label: "Roadmap", hint: "workflows map · what the fleet is building" },
+  { id: "deliverables", label: "Deliverables", hint: "documents · reports · specs from the fleet" },
   { id: "stream", label: "Stream", hint: "live activity feed" },
   { id: "scoreboard", label: "Scoreboard", hint: "KPI attainment" },
   { id: "graph", label: "Map", hint: "who owns what" },
@@ -63,6 +77,90 @@ const TABS: Tab[] = [
   { id: "ops", label: "Operations", hint: "cost · capacity · burn" },
   { id: "pool-b", label: "Pool B", hint: "auto-sync · Mac uptime · install funnel · spend" },
 ];
+
+type GovernorStatus = {
+  enabled: boolean;
+  tier: "open" | "conserve" | "critical_only" | "frozen";
+  utilizationPct: number | null;
+  windowLabel: string | null;
+  resetsAt: string | null;
+};
+
+const TIER_COLOR: Record<GovernorStatus["tier"], string> = {
+  open: "#34d399",
+  conserve: "#fbbf24",
+  critical_only: "#fb7185",
+  frozen: "#ef4444",
+};
+
+/** Always-visible quota strip: the live provider window the run governor
+ *  schedules against. Same data as the Dashboard card (GET /api/governor/
+ *  status, served by paperclip core — same origin as this plugin page). */
+function GovernorQuotaStrip() {
+  const [status, setStatus] = useState<GovernorStatus | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const pull = async () => {
+      try {
+        const r = await fetch("/api/governor/status");
+        if (!r.ok) return;
+        const body = (await r.json()) as GovernorStatus;
+        if (alive) setStatus(body);
+      } catch {
+        /* strip is best-effort; page works without it */
+      }
+    };
+    void pull();
+    const h = setInterval(pull, 60_000);
+    return () => {
+      alive = false;
+      clearInterval(h);
+    };
+  }, []);
+  if (!status || status.utilizationPct == null) return null;
+  const pct = Math.min(100, Math.max(0, status.utilizationPct));
+  const color = TIER_COLOR[status.tier];
+  return (
+    <div
+      title={`Run governor: system work is scheduled against this window. Tier ${status.tier}.`}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "6px 28px",
+        fontSize: 11,
+        color: TEXT_MUTED,
+      }}
+    >
+      <span style={{ letterSpacing: "0.06em", textTransform: "uppercase", fontWeight: 600 }}>
+        Quota
+      </span>
+      <div
+        style={{
+          flex: "0 1 260px",
+          height: 6,
+          borderRadius: 3,
+          background: "rgba(255,255,255,0.10)",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            width: `${pct}%`,
+            height: "100%",
+            borderRadius: 3,
+            background: color,
+            transition: "width 300ms ease",
+          }}
+        />
+      </div>
+      <span style={{ color: TEXT }}>{pct}%</span>
+      <span>{status.windowLabel ?? "provider window"}</span>
+      <span style={{ color, fontWeight: 600 }}>tier {status.tier}</span>
+      {status.resetsAt ? <span>resets {new Date(status.resetsAt).toLocaleString()}</span> : null}
+    </div>
+  );
+}
 
 export function MissionControlPage({ context }: PluginPageProps) {
   const companyId = context.companyId ?? "";
@@ -93,6 +191,8 @@ export function MissionControlPage({ context }: PluginPageProps) {
   }, [companyId, counts]);
   const countByTab: Record<View, number> = {
     decisions: counts.data?.decisions ?? 0,
+    roadmap: 0,
+    deliverables: 0,
     stream: 0,
     scoreboard: counts.data?.scoreboard ?? 0,
     graph: 0,
@@ -155,6 +255,9 @@ export function MissionControlPage({ context }: PluginPageProps) {
 
       {/* Frontier F1 — Headline + Status Orb */}
       <MissionControlHeadlineStrip context={context} />
+
+      {/* Run-governor quota strip — the constraint the scheduler obeys */}
+      <GovernorQuotaStrip />
 
       {/* Subnav */}
       <nav
@@ -227,6 +330,10 @@ export function MissionControlPage({ context }: PluginPageProps) {
       <div style={{ flex: 1, padding: 16, overflow: "auto" }}>
         {view === "decisions" ? (
           <MissionControlDecisionQueue context={context} mode="full" />
+        ) : view === "roadmap" ? (
+          <MissionControlRoadmapWidget {...widgetProps} />
+        ) : view === "deliverables" ? (
+          <MissionControlDeliverablesWidget {...widgetProps} />
         ) : view === "stream" ? (
           <MissionControlStreamWidget {...widgetProps} />
         ) : view === "scoreboard" ? (
