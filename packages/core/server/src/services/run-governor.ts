@@ -3,6 +3,7 @@ import type { Db } from "@paperclipai/db";
 import { agents, heartbeatRuns, issues } from "@paperclipai/db";
 import { fetchAllQuotaWindows } from "./quota-windows.js";
 import { logActivity } from "./activity-log.js";
+import { emitInferenceHook } from "./inference-hooks.js";
 
 /**
  * Run Governor — usage-aware scheduling against the real provider quota.
@@ -92,27 +93,27 @@ async function computeStatus(): Promise<GovernorStatus> {
     // provider the agent fleet runs on). Only fall back to other providers'
     // windows when anthropic reports none, so e.g. an exhausted OpenAI weekly
     // window can never freeze Claude work.
-    let worst: { pct: number; label: string; resetsAt: string | null } | null = null;
+    type WorstWindow = { pct: number; label: string; resetsAt: string | null };
     let anyOk = false;
     let firstError: string | null = null;
-    const scan = (providers: typeof results) => {
+    const scan = (providers: typeof results): WorstWindow | null => {
+      let acc: WorstWindow | null = null;
       for (const provider of providers) {
         if (!provider.ok) continue;
         for (const w of provider.windows) {
           if (w.usedPercent == null) continue;
-          if (!worst || w.usedPercent > worst.pct) {
-            worst = { pct: w.usedPercent, label: `${provider.provider} ${w.label}`, resetsAt: w.resetsAt ?? null };
+          if (!acc || w.usedPercent > acc.pct) {
+            acc = { pct: w.usedPercent, label: `${provider.provider} ${w.label}`, resetsAt: w.resetsAt ?? null };
           }
         }
       }
+      return acc;
     };
     for (const provider of results) {
       if (!provider.ok) firstError = firstError ?? provider.error ?? "quota fetch failed";
       else anyOk = true;
     }
-    const anthropic = results.filter((r) => r.provider === "anthropic");
-    scan(anthropic);
-    if (!worst) scan(results);
+    const worst = scan(results.filter((r) => r.provider === "anthropic")) ?? scan(results);
     return {
       ...base,
       tier: tierForUtilization(worst?.pct ?? null),
@@ -246,6 +247,14 @@ export async function evaluateRunClaim(
         entityType: "agent",
         entityId: run.agentId,
         details: { errorCode: breaker.errorCode, consecutiveFailures: breaker.consecutiveSameError },
+      });
+      emitInferenceHook(db, {
+        type: "breaker_paused",
+        companyId: run.companyId,
+        agentId: run.agentId,
+        runId: run.id,
+        errorCode: breaker.errorCode,
+        detail: `${breaker.consecutiveSameError} consecutive identical failures; agent auto-paused`,
       });
       return {
         action: "cancel",

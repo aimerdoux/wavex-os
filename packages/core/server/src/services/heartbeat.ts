@@ -56,6 +56,7 @@ import { getTelemetryClient } from "../telemetry.js";
 import { companySkillService } from "./company-skills.js";
 import { budgetService, type BudgetEnforcementScope } from "./budgets.js";
 import { evaluateRunClaim } from "./run-governor.js";
+import { emitInferenceHook, registerInferenceHookWaker } from "./inference-hooks.js";
 import { secretService } from "./secrets.js";
 import { resolveDefaultAgentWorkspaceDir, resolveManagedProjectWorkspaceDir } from "../home-paths.js";
 import {
@@ -2882,6 +2883,19 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       .where(eq(heartbeatRuns.id, runId))
       .returning()
       .then((rows) => rows[0] ?? null);
+
+    if (updated && (updated.status === "failed" || updated.status === "succeeded")) {
+      // Inference hook surface: terminal run states become events a
+      // configured fixer agent can react to (fire-and-forget, storm-capped).
+      emitInferenceHook(db, {
+        type: updated.status === "failed" ? "run_failed" : "run_completed",
+        companyId: updated.companyId,
+        agentId: updated.agentId,
+        runId: updated.id,
+        errorCode: updated.errorCode ?? null,
+        detail: updated.error ?? null,
+      });
+    }
 
     if (updated) {
       publishLiveEvent({
@@ -7532,6 +7546,18 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
 
     await cancelPendingWakeupsForBudgetScope(scope);
   }
+
+  // Inference hook surface: hand the hook manager a wakeup entrypoint so a
+  // configured fixer agent can be woken on run_failed/breaker events without
+  // the hook module importing this service (avoids a cycle). Wakes go through
+  // the normal queue, so the run governor still gates them.
+  registerInferenceHookWaker(async ({ agentId, reason }) => {
+    await enqueueWakeup(agentId, {
+      source: "automation",
+      triggerDetail: "system",
+      reason,
+    });
+  });
 
   return {
     list: async (companyId: string, agentId?: string, limit?: number) => {
