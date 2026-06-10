@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@/lib/router";
 import { useQuery } from "@tanstack/react-query";
 import { dashboardApi } from "../api/dashboard";
+import { api } from "../api/client";
 import { activityApi } from "../api/activity";
 import { accessApi } from "../api/access";
 import { issuesApi } from "../api/issues";
@@ -60,6 +61,19 @@ export function Dashboard() {
     queryKey: queryKeys.dashboard(selectedCompanyId!),
     queryFn: () => dashboardApi.summary(selectedCompanyId!),
     enabled: !!selectedCompanyId,
+  });
+
+  const { data: governor } = useQuery({
+    queryKey: ["governor-status"],
+    queryFn: () =>
+      api.get<{
+        enabled: boolean;
+        tier: "open" | "conserve" | "critical_only" | "frozen";
+        utilizationPct: number | null;
+        windowLabel: string | null;
+        resetsAt: string | null;
+      }>("/governor/status"),
+    refetchInterval: 60_000,
   });
 
   const { data: activity } = useQuery({
@@ -289,15 +303,36 @@ export function Dashboard() {
             />
             <MetricCard
               icon={DollarSign}
-              value={formatCents(data.costs.monthSpendCents)}
-              label="Month Spend"
+              value={
+                governor?.utilizationPct != null
+                  ? `${governor.utilizationPct}%`
+                  : formatCents(data.costs.monthSpendCents)
+              }
+              label={governor?.utilizationPct != null ? "Provider Quota Used" : "Month Spend"}
               to="/costs"
               description={
-                <span>
-                  {data.costs.monthBudgetCents > 0
-                    ? `${data.costs.monthUtilizationPercent}% of ${formatCents(data.costs.monthBudgetCents)} budget`
-                    : "Unlimited budget"}
-                </span>
+                governor?.utilizationPct != null ? (
+                  <span>
+                    {governor.windowLabel ?? "quota window"} · governor tier{" "}
+                    <span
+                      className={cn(
+                        governor.tier === "open" && "text-emerald-500",
+                        governor.tier === "conserve" && "text-amber-500",
+                        (governor.tier === "critical_only" || governor.tier === "frozen") && "text-red-500",
+                      )}
+                    >
+                      {governor.tier}
+                    </span>
+                    {" · "}
+                    {formatCents(data.costs.monthSpendCents)} billed
+                  </span>
+                ) : (
+                  <span>
+                    {data.costs.monthBudgetCents > 0
+                      ? `${data.costs.monthUtilizationPercent}% of ${formatCents(data.costs.monthBudgetCents)} budget`
+                      : "Unlimited budget"}
+                  </span>
+                )
               }
             />
             <MetricCard

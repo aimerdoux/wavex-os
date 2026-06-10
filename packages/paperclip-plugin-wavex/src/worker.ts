@@ -856,19 +856,33 @@ const plugin = definePlugin({
         );
         if (!r.ok) return { ok: false, status: r.status, error: `HTTP ${r.status}` };
         // composio-shim/initOAuth returns `{ url, pendingConnectionId,
-        // needsLiveWiring? }` — NOT `redirectUrl`. needsLiveWiring is
-        // truthy when WAVEX_COMPOSIO_DISABLED=1 (default in dev) or when
-        // the hub session can't be obtained.
+        // needsLiveWiring?, reason? }` — NOT `redirectUrl`. The reason field
+        // distinguishes real causes so we stop mislabelling everything as
+        // "Composio is disabled" (QA finding 2026-06-10).
         const body = (await r.json()) as {
           url?: string | null;
           pendingConnectionId?: string | null;
           needsLiveWiring?: boolean;
+          reason?: "disabled" | "requires_custom_credentials" | "authorize_failed";
         };
+        if (body.reason === "requires_custom_credentials") {
+          return {
+            ok: false,
+            needsLiveWiring: false,
+            reason: body.reason,
+            error:
+              "This connector has no one-click OAuth on Composio — it needs your own credentials (API key or OAuth app). Add them via the connector's credential form.",
+          };
+        }
         if (body.needsLiveWiring || !body.url) {
           return {
             ok: false,
             needsLiveWiring: true,
-            error: "Composio is disabled. Set COMPOSIO_API_KEY + WAVEX_COMPOSIO_DISABLED=0 to enable live OAuth.",
+            reason: body.reason ?? "disabled",
+            error:
+              body.reason === "authorize_failed"
+                ? "Composio OAuth initiation failed (live call error). Check the wavex-os-server logs and retry."
+                : "Composio is disabled. Set COMPOSIO_API_KEY + WAVEX_COMPOSIO_DISABLED=0 to enable live OAuth.",
           };
         }
         return {

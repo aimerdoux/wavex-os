@@ -32,4 +32,12 @@ export interface OAuthInitResult {
   /** Set when live mode is on but real Composio wiring isn't in place
    *  yet. UI surfaces a "needs setup" callout instead of failing silently. */
   needsLiveWiring?: boolean;
+  /** Why OAuth init produced no URL, so the UI shows an accurate message
+   *  instead of mislabelling every failure as "Composio is disabled":
+   *  - "disabled": no key / WAVEX_COMPOSIO_DISABLED on
+   *  - "requires_custom_credentials": Composio has no managed OAuth for this
+   *    toolkit — the customer must supply their own credentials via the
+   *    credential-fields flow
+   *  - "authorize_failed": live Composio call failed (transient/other) */
+  reason?: "disabled" | "requires_custom_credentials" | "authorize_failed";
 }

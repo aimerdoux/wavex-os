@@ -157,7 +157,7 @@ export async function initOAuth(params: {
 }): Promise<OAuthInitResult> {
   const client = await getClient();
   if (!client) {
-    return { url: null, pendingConnectionId: null, needsLiveWiring: true };
+    return { url: null, pendingConnectionId: null, needsLiveWiring: true, reason: "disabled" };
   }
   try {
     const userId = composioCompanyUser(params.companyId, params.userId);
@@ -175,11 +175,21 @@ export async function initOAuth(params: {
       pendingConnectionId: conn.id ?? null,
     };
   } catch (err) {
-    console.warn(
-      `[composio-shim] initOAuth(${params.toolkitSlug}) failed:`,
-      (err as Error).message,
-    );
-    return { url: null, pendingConnectionId: null, needsLiveWiring: true };
+    const message = (err as Error).message ?? "";
+    console.warn(`[composio-shim] initOAuth(${params.toolkitSlug}) failed:`, message);
+    // "Default auth config not found … Composio does not have managed
+    // credentials for this toolkit" is not an outage and not "disabled":
+    // the toolkit has no one-click OAuth; the customer must supply their
+    // own credentials via the credential-fields flow.
+    if (/does not have managed credentials|default auth config not found|no default auth config found/i.test(message)) {
+      return {
+        url: null,
+        pendingConnectionId: null,
+        needsLiveWiring: false,
+        reason: "requires_custom_credentials",
+      };
+    }
+    return { url: null, pendingConnectionId: null, needsLiveWiring: true, reason: "authorize_failed" };
   }
 }
 
