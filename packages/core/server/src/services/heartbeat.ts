@@ -55,6 +55,7 @@ import { trackAgentFirstHeartbeat } from "@paperclipai/shared/telemetry";
 import { getTelemetryClient } from "../telemetry.js";
 import { companySkillService } from "./company-skills.js";
 import { budgetService, type BudgetEnforcementScope } from "./budgets.js";
+import { evaluateRunClaim } from "./run-governor.js";
 import { secretService } from "./secrets.js";
 import { resolveDefaultAgentWorkspaceDir, resolveManagedProjectWorkspaceDir } from "../home-paths.js";
 import {
@@ -3987,6 +3988,24 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
     }
 
     const issueId = readNonEmptyString(context.issueId);
+
+    const governorVerdict = await evaluateRunClaim(db, run, issueId ?? null);
+    if (governorVerdict.action === "cancel") {
+      logger.info(
+        { runId: run.id, agentId: run.agentId, tier: governorVerdict.tier, reason: governorVerdict.reason },
+        "claimQueuedRun: cancelled by run governor",
+      );
+      await cancelRunInternal(run.id, governorVerdict.reason);
+      return null;
+    }
+    if (governorVerdict.action === "defer") {
+      logger.info(
+        { runId: run.id, agentId: run.agentId, tier: governorVerdict.tier, reason: governorVerdict.reason },
+        "claimQueuedRun: deferred by run governor (stays queued)",
+      );
+      return null;
+    }
+
     if (issueId) {
       const activePauseHold = await treeControlSvc.getActivePauseHoldGate(run.companyId, issueId);
       const treeHoldInteractionWake = activePauseHold && await isVerifiedIssueTreeControlInteractionWake(db, {

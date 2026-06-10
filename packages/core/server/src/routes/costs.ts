@@ -20,6 +20,7 @@ import {
 } from "../services/index.js";
 import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
 import { fetchAllQuotaWindows } from "../services/quota-windows.js";
+import { getGovernorStatus } from "../services/run-governor.js";
 import { badRequest } from "../errors.js";
 import type { PluginWorkerManager } from "../services/plugin-worker-manager.js";
 
@@ -232,6 +233,15 @@ export function costRoutes(
     }
     const results = await fetchAllQuotaWindows();
     res.json(results);
+  });
+
+  // Run-governor status: live quota utilization mapped to the scheduling
+  // allowance tier (open / conserve / critical_only / frozen). Read by the
+  // dashboard quota bar and by operators deciding whether to resume fleets.
+  router.get("/governor/status", async (req, res) => {
+    const forceRefresh = req.query.refresh === "1";
+    const status = await getGovernorStatus(forceRefresh);
+    res.json(status);
   });
 
   router.get("/companies/:companyId/budgets/overview", async (req, res) => {

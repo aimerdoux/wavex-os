@@ -2665,8 +2665,35 @@ export function issueService(db: Db) {
         labelIds: inputLabelIds,
         blockedByIssueIds,
         inheritExecutionWorkspaceFromIssueId,
+        allowDuplicate,
         ...issueData
       } = data;
+
+      // Duplicate-title guard (anti-ping-pong): identical open issues are the
+      // top source of duplicated agent work (audited 2026-06-10: 15 duplicate
+      // clusters in one afternoon). Reject creates whose normalized title
+      // matches an open issue in the same company unless explicitly allowed.
+      if (!allowDuplicate && process.env.WAVEX_ISSUE_DEDUPE_DISABLED !== "1") {
+        const normalizedTitle = data.title.trim().replace(/\s+/g, " ").toLowerCase();
+        const existingDuplicate = await db
+          .select({ id: issues.id, identifier: issues.identifier, status: issues.status })
+          .from(issues)
+          .where(
+            and(
+              eq(issues.companyId, companyId),
+              notInArray(issues.status, ["done", "cancelled"]),
+              sql`lower(regexp_replace(trim(${issues.title}), '\\s+', ' ', 'g')) = ${normalizedTitle}`,
+            ),
+          )
+          .limit(1)
+          .then((rows) => rows[0] ?? null);
+        if (existingDuplicate) {
+          throw conflict(
+            `duplicate_open_issue: an open issue with this title already exists (${existingDuplicate.identifier ?? existingDuplicate.id}). Comment on it instead of filing a duplicate, or pass allowDuplicate: true if this is intentionally distinct.`,
+            { existingIssueId: existingDuplicate.id, existingIdentifier: existingDuplicate.identifier },
+          );
+        }
+      }
       const isolatedWorkspacesEnabled = (await instanceSettings.getExperimental()).enableIsolatedWorkspaces;
       if (!isolatedWorkspacesEnabled) {
         delete issueData.executionWorkspaceId;

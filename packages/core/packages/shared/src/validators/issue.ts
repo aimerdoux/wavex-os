@@ -153,6 +153,8 @@ export const createIssueSchema = z.object({
   executionWorkspacePreference: z.enum(ISSUE_EXECUTION_WORKSPACE_PREFERENCES).optional().nullable(),
   executionWorkspaceSettings: issueExecutionWorkspaceSettingsSchema.optional().nullable(),
   labelIds: z.array(z.string().uuid()).optional(),
+  /** bypass the open-duplicate-title guard (governor anti-ping-pong feature) */
+  allowDuplicate: z.boolean().optional(),
 });
 
 export type CreateIssue = z.infer<typeof createIssueSchema>;
