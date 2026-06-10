@@ -884,6 +884,32 @@ function DirectoryModal({
                         ? "WaveX · curated fallback"
                         : "Catalog"}
                   </span>
+                  {/* Connected page: prominent toggle so the user can see at a
+                      glance which connectors are currently on. */}
+                  <span style={{ display: "inline-flex", gap: 2, flexShrink: 0 }}>
+                    {(["all", "connected"] as const).map((mode) => {
+                      const on = mode === "connected" ? statusFilter === "connected" : statusFilter !== "connected";
+                      return (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => setStatusFilter(mode === "connected" ? "connected" : "all")}
+                          style={{
+                            padding: "6px 12px",
+                            borderRadius: 999,
+                            border: `1px solid ${on ? "rgba(78,201,176,0.5)" : BORDER}`,
+                            background: on ? "rgba(78,201,176,0.12)" : "transparent",
+                            color: on ? "#4ec9b0" : TEXT_MUTED,
+                            fontSize: 12,
+                            fontWeight: on ? 600 : 500,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {mode === "connected" ? `Connected (${connectedSlugs.size})` : "All"}
+                        </button>
+                      );
+                    })}
+                  </span>
                   <span
                     style={{
                       fontSize: 12,
