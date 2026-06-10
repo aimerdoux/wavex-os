@@ -258,6 +258,11 @@ const SESSIONED_LOCAL_ADAPTERS = new Set([
   "hermes_local",
   "opencode_local",
   "pi_local",
+  // External adapter that spawns a tracked local child and reports its pid
+  // via onSpawn. Without this entry the stale-run reaper marks its runs
+  // process_lost after staleThresholdMs even while the child pid is alive
+  // (observed 2026-06-10: three canary runs reaped at exactly ~5m01s).
+  "plateau_local",
 ]);
 const INLINE_BASE64_IMAGE_DATA_RE = /("type":"image","source":\{"type":"base64","data":")([A-Za-z0-9+/=]{1024,})(")/g;
 
