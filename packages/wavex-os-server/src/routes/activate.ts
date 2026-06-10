@@ -16,6 +16,7 @@ import { assertBoard, assertCompanyAccess, AuthError } from "@wavex-os/auth-shim
 import { getDb, runMigrations } from "@wavex-os/db";
 import { getOnboardingDir } from "../state-bridge.js";
 import { bridgeAgents, bridgeKpis } from "../bridge/finalize-bridge.js";
+import { emitInferenceHookEvent } from "../inference-hooks-client.js";
 import { handoffToPaperclip, rerenderBundlesForCompany } from "../bridge/paperclip-handoff.js";
 import { ignite } from "../bridge/ignition.js";
 
@@ -81,6 +82,12 @@ async function syncManifestToCloud(
       console.error(
         `[activate] manifest cloud-sync failed for ${companyId}: ${res.status} ${res.statusText} ${detail}`,
       );
+      emitInferenceHookEvent({
+        type: "onboarding_error",
+        companyId,
+        errorCode: "manifest_cloud_sync_failed",
+        detail: `${res.status} ${res.statusText} ${detail}`,
+      });
       return;
     }
     console.log(`[activate] manifest cloud-synced for ${companyId} (sha ${manifestSha256.slice(0, 12)})`);
@@ -88,6 +95,12 @@ async function syncManifestToCloud(
     console.error(
       `[activate] manifest cloud-sync error for ${companyId}: ${e instanceof Error ? e.message : String(e)}`,
     );
+    emitInferenceHookEvent({
+      type: "onboarding_error",
+      companyId,
+      errorCode: "manifest_cloud_sync_error",
+      detail: e instanceof Error ? e.message : String(e),
+    });
   }
 }
 

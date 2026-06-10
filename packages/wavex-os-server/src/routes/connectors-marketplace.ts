@@ -34,7 +34,7 @@ import { readdir, stat as fsStat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { FEATURED_TOOLKITS } from "@wavex-os/composio-shim";
+import { FEATURED_TOOLKITS, listAllToolkits } from "@wavex-os/composio-shim";
 import { listConnectorStates } from "../vault/service.js";
 import { assertBoard, AuthError } from "@wavex-os/auth-shim";
 
@@ -173,7 +173,35 @@ export function registerConnectorsMarketplaceRoute(app: FastifyInstance): void {
         return out;
       });
 
-      return reply.send({ ok: true, company_id: companyId, connectors });
+      // "Allow all": in live Composio mode, append the full toolkit catalog
+      // (hundreds) beyond the curated featured set. Disabled mode → null → the
+      // featured fallback is all the user sees.
+      const seen = new Set(connectors.map((c) => c.slug));
+      const full = await listAllToolkits().catch(() => null);
+      if (full) {
+        for (const tk of full) {
+          if (seen.has(tk.slug)) continue;
+          seen.add(tk.slug);
+          const live = vaultStates.get(tk.slug);
+          const status: Status = live ? mapState(live) : "available";
+          const out: MarketplaceConnector = {
+            slug: tk.slug,
+            display_name: tk.name,
+            category: tk.category ?? "other",
+            path: "oauth", // Composio-brokered
+            status,
+          };
+          if (companyId) out.oauth_initiate_url = "/wavex-os/onboarding/connectors/oauth/initiate";
+          connectors.push(out);
+        }
+      }
+
+      return reply.send({
+        ok: true,
+        company_id: companyId,
+        connectors,
+        source: full ? "live_full_catalog" : "featured_fallback",
+      });
     },
   );
 }

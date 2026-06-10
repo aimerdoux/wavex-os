@@ -262,9 +262,27 @@ export function costRoutes(
       res.status(400).json({ error: "type (valid hook type) + companyId required" });
       return;
     }
+    // Sibling processes (wavex-os-server) know companies by slug, not UUID —
+    // resolve "wavexcard" -> the company whose name ends with "/wavexcard"
+    // (or equals it) so their errors can land on the inference surface.
+    let resolvedCompanyId = body.companyId;
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.companyId);
+    if (!isUuid) {
+      const slug = body.companyId.toLowerCase();
+      const all = await companies.list();
+      const match = all.find(
+        (c: { id: string; name: string }) =>
+          c.name.toLowerCase() === slug || c.name.toLowerCase().endsWith(`/${slug}`),
+      );
+      if (!match) {
+        res.status(404).json({ error: `no company matches slug '${body.companyId}'` });
+        return;
+      }
+      resolvedCompanyId = match.id;
+    }
     emitInferenceHook(db, {
       type: body.type,
-      companyId: body.companyId,
+      companyId: resolvedCompanyId,
       agentId: body.agentId ?? null,
       runId: body.runId ?? null,
       errorCode: body.errorCode ?? null,

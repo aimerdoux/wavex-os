@@ -37,6 +37,7 @@ import {
   connectWithCredentials,
 } from "@wavex-os/composio-shim";
 import { getInferenceMode } from "@wavex-os/inference-adapter";
+import { emitInferenceHookEvent } from "../inference-hooks-client.js";
 
 /** When the customer's stack is in hosted mode (their installer pointed
  *  WAVEX_INFERENCE_HUB_URL at the operator's Mac mini), we PROXY the
@@ -67,7 +68,7 @@ async function proxyToHubInitiate(args: {
   installId: string;
   email: string;
   redirectBackUrl?: string;
-}): Promise<{ url: string | null; pendingConnectionId: string | null; needsLiveWiring?: boolean } | null> {
+}): Promise<{ url: string | null; pendingConnectionId: string | null; needsLiveWiring?: boolean; reason?: string } | null> {
   const session = await hubSessionToken(args);
   if (!session) {
     if (getInferenceMode() !== "hosted") return null;
@@ -227,6 +228,17 @@ export function registerConnectorRoutes(app: FastifyInstance): void {
         toolkitSlug,
         callbackUrl: cbUrl,
       });
+
+      // Real connector failures (not "needs credentials" classifications)
+      // land on the inference surface so the middleware fixer sees them.
+      if (result.needsLiveWiring && result.reason === "authorize_failed") {
+        emitInferenceHookEvent({
+          type: "connector_failed",
+          companyId,
+          errorCode: "composio_authorize_failed",
+          detail: `toolkit=${toolkitSlug}`,
+        });
+      }
 
       // Optimistically record pending in tools.json so the UI can poll
       // /wavex-os/onboarding/avatar/:id (which already returns tools) to

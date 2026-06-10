@@ -22,6 +22,12 @@ export interface MonteCarloWinner {
   p_auto_catalytic: number;
   p_ruin: number;
   mean_cycles_to_critical: number | null;
+  /** Pre-scale mode holds MRR flat BY DESIGN — activation growth is the
+   *  stage-appropriate headline stat there. Optional for back-compat with
+   *  manifests written before 2026-06-10. */
+  mean_activation_growth?: number;
+  /** Which simulator mode produced these stats (pre_scale | growth | scale). */
+  model_mode?: string;
   rationale: string;
   /** Horizon + n_runs + seed, for reproducibility. */
   run_params: {

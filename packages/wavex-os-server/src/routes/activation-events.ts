@@ -12,6 +12,42 @@
 import { z } from "zod";
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 
+// ─── mixpanel emit ─────────────────────────────────────────────────────────
+
+async function emitMixpanelActivation(
+  userId: string,
+  companyId: string,
+  ttvHours: number,
+  cohortWeek: string,
+): Promise<void> {
+  const token = process.env.MIXPANEL_PROJECT_TOKEN;
+  if (!token) return;
+  const event = {
+    event: "User Activated",
+    properties: {
+      token,
+      distinct_id: userId,
+      company_id: companyId,
+      ttv_hours: ttvHours,
+      cohort_week: cohortWeek,
+      within_48h: ttvHours <= 48,
+    },
+  };
+  const data = encodeURIComponent(Buffer.from(JSON.stringify(event)).toString("base64"));
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 5_000);
+  try {
+    await fetch(`https://api.mixpanel.com/track?data=${data}`, {
+      method: "GET",
+      signal: ctrl.signal,
+    });
+  } catch {
+    // best-effort; never block the activation path
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 // ─── schema ────────────────────────────────────────────────────────────────
 
 const emitSchema = z.object({
@@ -126,11 +162,13 @@ export function registerActivationEventsRoute(app: FastifyInstance): void {
     // derive a user_activated event if so (idempotent via unique index).
     let activatedRecord: { id: string } | null = null;
     if (data.event_type === "test_run_completed") {
-      const signup = await findRecentSignup(supaUrl, supaKey, data.company_id, data.user_id, 24);
+      // 48h window aligns with TTV target of <= 48h (WAVAAAAAAAA-29)
+      const signup = await findRecentSignup(supaUrl, supaKey, data.company_id, data.user_id, 48);
       if (signup) {
         const signedUpAt = new Date(signup.occurred_at).getTime();
         const ranAt = new Date(occurred_at).getTime();
         const hoursSinceSignup = Math.round((ranAt - signedUpAt) / 3_600_000 * 10) / 10;
+        const cohortWeek = new Date(signup.occurred_at).toISOString().slice(0, 10);
         activatedRecord = await writeEvent(supaUrl, supaKey, {
           company_id: data.company_id,
           user_id: data.user_id,
@@ -143,6 +181,7 @@ export function registerActivationEventsRoute(app: FastifyInstance): void {
         });
         if (activatedRecord) {
           console.log(`[activation-events] user_activated: company=${data.company_id} hours=${hoursSinceSignup}`);
+          await emitMixpanelActivation(data.user_id, data.company_id, hoursSinceSignup, cohortWeek);
         }
       }
     }

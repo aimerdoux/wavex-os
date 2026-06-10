@@ -29,6 +29,7 @@ import {
 
 import { MissionControlStreamWidget } from "./MissionControlStreamWidget.js";
 import { MissionControlDeliverablesWidget } from "./MissionControlDeliverablesWidget.js";
+import { MissionControlRoadmapWidget } from "./MissionControlRoadmapWidget.js";
 import { MissionControlScoreboardWidget } from "./MissionControlScoreboardWidget.js";
 import { AccountabilityMap } from "./AccountabilityMap.js";
 import { PoolBHealthWidget } from "./PoolBHealthWidget.js";
@@ -48,6 +49,7 @@ const TEXT_MUTED = "rgba(255,255,255,0.55)";
 
 type View =
   | "decisions"
+  | "roadmap"
   | "deliverables"
   | "stream"
   | "scoreboard"
@@ -65,6 +67,7 @@ interface Tab {
 
 const TABS: Tab[] = [
   { id: "decisions", label: "Decisions", hint: "what needs you" },
+  { id: "roadmap", label: "Roadmap", hint: "workflows map · what the fleet is building" },
   { id: "deliverables", label: "Deliverables", hint: "documents · reports · specs from the fleet" },
   { id: "stream", label: "Stream", hint: "live activity feed" },
   { id: "scoreboard", label: "Scoreboard", hint: "KPI attainment" },
@@ -188,6 +191,7 @@ export function MissionControlPage({ context }: PluginPageProps) {
   }, [companyId, counts]);
   const countByTab: Record<View, number> = {
     decisions: counts.data?.decisions ?? 0,
+    roadmap: 0,
     deliverables: 0,
     stream: 0,
     scoreboard: counts.data?.scoreboard ?? 0,
@@ -326,6 +330,8 @@ export function MissionControlPage({ context }: PluginPageProps) {
       <div style={{ flex: 1, padding: 16, overflow: "auto" }}>
         {view === "decisions" ? (
           <MissionControlDecisionQueue context={context} mode="full" />
+        ) : view === "roadmap" ? (
+          <MissionControlRoadmapWidget {...widgetProps} />
         ) : view === "deliverables" ? (
           <MissionControlDeliverablesWidget {...widgetProps} />
         ) : view === "stream" ? (

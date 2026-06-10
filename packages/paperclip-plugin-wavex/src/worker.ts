@@ -248,6 +248,64 @@ const plugin = definePlugin({
       },
     );
 
+    // Roadmap / workflows map — the big workflows ignition seeds as
+    // "[Roadmap] …" issues, each driving named KPIs through child issues.
+    // Reads Paperclip directly (no wavex-os-server hop): roadmap lanes with
+    // owner, status, KPIs moved, and child-issue progress.
+    ctx.data.register("mission-control-roadmap", async ({ companyId }) => {
+      const id = String(companyId ?? "");
+      if (!id) return { ok: false, lanes: [], source: "no-company" };
+      try {
+        const [issuesRes, agentsRes] = await Promise.all([
+          localFetch(`${PAPERCLIP_BASE}/api/companies/${encodeURIComponent(id)}/issues`),
+          localFetch(`${PAPERCLIP_BASE}/api/companies/${encodeURIComponent(id)}/agents`),
+        ]);
+        if (!issuesRes.ok) return { ok: false, lanes: [], source: "paperclip-error", status: issuesRes.status };
+        const issues = (await issuesRes.json()) as Array<{
+          id: string;
+          parentId?: string | null;
+          identifier?: string | null;
+          title: string;
+          status: string;
+          priority?: string | null;
+          assigneeAgentId?: string | null;
+          description?: string | null;
+          updatedAt?: string | null;
+        }>;
+        const agents = agentsRes.ok
+          ? ((await agentsRes.json()) as Array<{ id: string; name: string }>)
+          : [];
+        const agentName = new Map(agents.map((a) => [a.id, a.name]));
+        const roadmap = issues.filter((i) => /^\[Roadmap\]/i.test(i.title) && i.status !== "cancelled");
+        const lanes = roadmap.map((lane) => {
+          const children = issues.filter((i) => i.parentId === lane.id && i.status !== "cancelled");
+          const done = children.filter((i) => i.status === "done").length;
+          const inProgress = children.filter((i) => i.status === "in_progress" || i.status === "in_review").length;
+          // ignition writes "**KPIs this moves:** a, b" into the description
+          const kpiMatch = /KPIs this moves:\*{0,2}\s*([^\n]+)/i.exec(lane.description ?? "");
+          const kpis = (kpiMatch?.[1] ?? "")
+            .replace(/\*/g, "")
+            .split(",")
+            .map((s) => s.trim())
+            .filter((s) => s.length > 0 && s.toLowerCase() !== "n/a");
+          return {
+            id: lane.id,
+            identifier: lane.identifier ?? null,
+            title: lane.title.replace(/^\[Roadmap\]\s*/i, ""),
+            status: lane.status,
+            priority: lane.priority ?? null,
+            owner: lane.assigneeAgentId ? (agentName.get(lane.assigneeAgentId) ?? null) : null,
+            kpis,
+            children: { total: children.length, done, inProgress },
+            updatedAt: lane.updatedAt ?? null,
+          };
+        });
+        return { ok: true, lanes, source: "paperclip" };
+      } catch (err) {
+        return { ok: false, lanes: [], source: "exception", error: String(err) };
+      }
+    });
+
     ctx.data.register("mission-control-tab-counts", async ({ companyId }) => {
       const cfg = (await ctx.config.get()) as PluginConfig | null;
       const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
