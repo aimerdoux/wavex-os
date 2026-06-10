@@ -60,6 +60,8 @@ import { startReferralEmailBScheduler } from "./jobs/referral-email-b.js";
 import { startProfessionalReengagementScheduler } from "./jobs/professional-reengagement.js";
 import { startBookingIntentCleanupScheduler } from "./jobs/booking-intent-cleanup.js";
 import { runAbandonedBookingRecoveryJob } from "./jobs/abandoned-booking-recovery.js";
+import { runReferralBlastJob } from "./jobs/referral-blast.js";
+import { startReferralNurtureScheduler } from "./jobs/referral-nurture.js";
 import { registerReengagementRoutes } from "./routes/reengagement.js";
 import { registerBookingRecoveryRoute } from "./routes/booking-recovery.js";
 import { registerBookingIntentRoute } from "./routes/booking-intent.js";
@@ -136,6 +138,15 @@ export function registerWavexOsRoutes(app: FastifyInstance): void {
   void runAbandonedBookingRecoveryJob().catch((err) =>
     console.error("[abandoned-booking-recovery] startup run failed:", err),
   );
+  // One-shot: send referral launch blast to all active members.
+  // Dry-run by default (WAVEX_REFERRAL_BLAST_DRY_RUN=true). Set to "false"
+  // after board confirmation of blast send date. Idempotent via referral_sends.
+  void runReferralBlastJob().catch((err) =>
+    console.error("[referral-blast] startup run failed:", err),
+  );
+  // Hourly: send Day-14 nurture to members with 0 converts, 14 days post-blast.
+  // Dry-run by default (WAVEX_REFERRAL_NURTURE_DRY_RUN=true).
+  startReferralNurtureScheduler();
 }
 
 export { applyStateBridge, getInstanceDir, getOnboardingDir, getWavexDataRoot } from "./state-bridge.js";
