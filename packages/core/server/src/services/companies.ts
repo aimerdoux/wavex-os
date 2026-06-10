@@ -114,14 +114,29 @@ export function companyService(db: Db) {
       .leftJoin(companyLogos, eq(companyLogos.companyId, companies.id));
   }
 
-  function deriveIssuePrefixBase(name: string) {
-    const normalized = name.toUpperCase().replace(/[^A-Z]/g, "");
-    return normalized.slice(0, 3) || ISSUE_PREFIX_FALLBACK;
-  }
-
-  function suffixForAttempt(attempt: number) {
-    if (attempt <= 1) return "";
-    return "A".repeat(attempt - 1);
+  /** Candidate prefixes, most readable first. The old scheme appended an
+   *  extra "A" per collision, which produced WAVAAAAAAAA for the ninth
+   *  wavex-os/* company. Instead: derive from the most distinctive part of
+   *  the name (the segment after the last "/"), widen the slice, fall back
+   *  to a consonant skeleton, and finally numeric suffixes. */
+  function deriveIssuePrefixCandidates(name: string): string[] {
+    const norm = (s: string) => s.toUpperCase().replace(/[^A-Z]/g, "");
+    const segment = norm(name.split("/").pop() ?? name) || norm(name);
+    const base = segment || ISSUE_PREFIX_FALLBACK;
+    const candidates: string[] = [];
+    const push = (c: string) => {
+      if (c.length >= 2 && !candidates.includes(c)) candidates.push(c);
+    };
+    push(base.slice(0, 3));
+    push(base.slice(0, 4));
+    push(base.slice(0, 5));
+    push(base.slice(0, 6));
+    // consonant skeleton, e.g. WAVEXCARD -> WVXCR
+    push((base[0] + base.slice(1).replace(/[AEIOU]/g, "")).slice(0, 4));
+    push((base[0] + base.slice(1).replace(/[AEIOU]/g, "")).slice(0, 5));
+    // numeric suffixes on the short base as the unbounded tail
+    for (let n = 2; n < 1000; n += 1) push(`${base.slice(0, 3)}${n}`);
+    return candidates.length > 0 ? candidates : [ISSUE_PREFIX_FALLBACK];
   }
 
   function isIssuePrefixConflict(error: unknown) {
@@ -138,10 +153,7 @@ export function companyService(db: Db) {
   }
 
   async function createCompanyWithUniquePrefix(data: typeof companies.$inferInsert) {
-    const base = deriveIssuePrefixBase(data.name);
-    let suffix = 1;
-    while (suffix < 10000) {
-      const candidate = `${base}${suffixForAttempt(suffix)}`;
+    for (const candidate of deriveIssuePrefixCandidates(data.name)) {
       try {
         const rows = await db
           .insert(companies)
@@ -151,7 +163,6 @@ export function companyService(db: Db) {
       } catch (error) {
         if (!isIssuePrefixConflict(error)) throw error;
       }
-      suffix += 1;
     }
     throw new Error("Unable to allocate unique issue prefix");
   }
