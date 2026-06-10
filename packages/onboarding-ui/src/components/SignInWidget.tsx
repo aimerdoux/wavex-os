@@ -23,9 +23,11 @@ export interface SignInWidgetProps {
    *  Defaults to the /pricing page. Override for flows like /signup where
    *  UTM params must be preserved across the magic-link round-trip. */
   redirectTo?: string;
+  /** Override the "Sign in to …" label shown when the user is not signed in. */
+  signInLabel?: string;
 }
 
-export function SignInWidget({ onSessionChange, redirectTo }: SignInWidgetProps): JSX.Element {
+export function SignInWidget({ onSessionChange, redirectTo, signInLabel = "Sign in to subscribe" }: SignInWidgetProps): JSX.Element {
   const supabase = getSupabase();
   const [session, setSession] = useState<Session | null>(null);
   const [email, setEmail] = useState("");
@@ -118,7 +120,7 @@ export function SignInWidget({ onSessionChange, redirectTo }: SignInWidgetProps)
   return (
     <div style={card("#0e0e10", "#1f1f23")}>
       <div style={{ marginBottom: 12 }}>
-        <strong style={{ color: "#e6e6e6" }}>Sign in to subscribe</strong>
+        <strong style={{ color: "#e6e6e6" }}>{signInLabel}</strong>
         <p style={{ color: "#8a8a92", fontSize: 13, margin: "4px 0 0" }}>
           We'll email you a one-tap sign-in link. No password.
         </p>
