@@ -863,15 +863,17 @@ const plugin = definePlugin({
           url?: string | null;
           pendingConnectionId?: string | null;
           needsLiveWiring?: boolean;
-          reason?: "disabled" | "requires_custom_credentials" | "authorize_failed";
+          reason?: "disabled" | "requires_custom_credentials" | "requires_initiation_fields" | "authorize_failed";
         };
-        if (body.reason === "requires_custom_credentials") {
+        if (body.reason === "requires_custom_credentials" || body.reason === "requires_initiation_fields") {
           return {
             ok: false,
             needsLiveWiring: false,
             reason: body.reason,
             error:
-              "This connector has no one-click OAuth on Composio — it needs your own credentials (API key or OAuth app). Add them via the connector's credential form.",
+              body.reason === "requires_initiation_fields"
+                ? "This connector needs a few details before OAuth can start (e.g. an account ID). Fill them in the connector's form."
+                : "This connector has no one-click OAuth on Composio — it needs your own credentials (API key or OAuth app). Add them via the connector's credential form.",
           };
         }
         if (body.needsLiveWiring || !body.url) {
@@ -901,10 +903,11 @@ const plugin = definePlugin({
       const cfg = (await ctx.config.get()) as PluginConfig | null;
       const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
       const slug = String(params.slug ?? "");
+      const fieldsFor = params.fieldsFor === "initiation" ? "initiation" : "all";
       if (!slug) return { ok: false, error: "missing slug" };
       try {
         const r = await localFetch(
-          `${base}/wavex-os/onboarding/connectors/credential-requirements/${encodeURIComponent(slug)}`,
+          `${base}/wavex-os/onboarding/connectors/credential-requirements/${encodeURIComponent(slug)}?fieldsFor=${fieldsFor}`,
         );
         if (!r.ok) return { ok: false, error: `HTTP ${r.status}` };
         return await r.json();

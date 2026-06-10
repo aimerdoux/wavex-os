@@ -191,6 +191,18 @@ export async function initOAuth(params: {
         reason: "requires_custom_credentials",
       };
     }
+    // Managed OAuth exists, but the connected account needs pre-OAuth
+    // initiation fields (Composio error 612 ConnectedAccount_MissingRequiredFields,
+    // e.g. googleads Customer ID, whatsapp WABA ID). Same form UI, different
+    // connect path (managed auth config + fields on initiate).
+    if (/ConnectedAccount_MissingRequiredFields|Missing required fields/i.test(message)) {
+      return {
+        url: null,
+        pendingConnectionId: null,
+        needsLiveWiring: false,
+        reason: "requires_initiation_fields",
+      };
+    }
     return { url: null, pendingConnectionId: null, needsLiveWiring: true, reason: "authorize_failed" };
   }
 }
@@ -253,6 +265,7 @@ function composioCompanyUser(companyId: string, userId?: string): string {
  *  required auth-config creation fields for it. */
 export async function getCredentialRequirements(
   toolkitSlug: string,
+  opts?: { fieldsFor?: "all" | "initiation" },
 ): Promise<CredentialRequirements> {
   const client = await getClient();
   if (!client) {
@@ -299,8 +312,14 @@ export async function getCredentialRequirements(
         }))
         .filter((f) => f.name.length > 0);
     };
+    // "initiation" mode (managed OAuth needing pre-OAuth fields like a
+    // Customer ID) must NOT ask for auth-config creation fields (client
+    // id/secret) — Composio's managed app provides those.
+    const initiationOnly = opts?.fieldsFor === "initiation";
     const [creationRaw, initiationRaw] = await Promise.all([
-      tk.getAuthConfigCreationFields(toolkitSlug, authScheme, { requiredOnly: true }).catch(() => []),
+      initiationOnly
+        ? Promise.resolve([])
+        : tk.getAuthConfigCreationFields(toolkitSlug, authScheme, { requiredOnly: true }).catch(() => []),
       tk.getConnectedAccountInitiationFields(toolkitSlug, authScheme, { requiredOnly: true }).catch(() => []),
     ]);
     const merged = new Map<string, CredentialField>();
@@ -336,22 +355,38 @@ export async function connectWithCredentials(params: {
     return { url: null, pendingConnectionId: null, needsLiveWiring: true, reason: "disabled" };
   }
   try {
-    const cfg = await (client.authConfigs as unknown as {
-      create: (
-        toolkit: string,
-        options: { type: "use_custom_auth"; authScheme: string; credentials: Record<string, string>; name?: string },
-      ) => Promise<{ id: string }>;
-    }).create(params.toolkitSlug, {
-      type: "use_custom_auth",
-      authScheme: params.authScheme,
-      credentials: params.credentials,
-      name: `wavex-${params.companyId.slice(0, 8)}-${params.toolkitSlug}`,
-    });
+    const authConfigs = client.authConfigs as unknown as {
+      create: (toolkit: string, options: Record<string, unknown>) => Promise<{ id: string }>;
+      list: (q: Record<string, unknown>) => Promise<{ items?: Array<{ id: string }> }>;
+    };
+    const isOAuthStyle =
+      params.authScheme.startsWith("OAUTH") || params.authScheme === "DCR_OAUTH";
+    let cfg: { id: string };
+    if (isOAuthStyle) {
+      // Managed-OAuth toolkit whose connected account needs pre-OAuth fields
+      // (googleads Customer ID, whatsapp WABA ID…): reuse/create the
+      // Composio-managed auth config; the user's fields ride on initiate.
+      try {
+        cfg = await authConfigs.create(params.toolkitSlug, { type: "use_composio_managed_auth" });
+      } catch {
+        const existing = await authConfigs.list({ toolkitSlug: params.toolkitSlug });
+        const first = existing.items?.[0];
+        if (!first) throw new Error(`no auth config available for ${params.toolkitSlug}`);
+        cfg = first;
+      }
+    } else {
+      cfg = await authConfigs.create(params.toolkitSlug, {
+        type: "use_custom_auth",
+        authScheme: params.authScheme,
+        credentials: params.credentials,
+        name: `wavex-${params.companyId.slice(0, 8)}-${params.toolkitSlug}`,
+      });
+    }
     const userId = composioCompanyUser(params.companyId, params.userId);
-    // Key-style schemes also need the secret on the connected account
-    // (ConnectionData {authScheme, val}); OAuth-style schemes ignore config
-    // and return a redirect URL instead.
-    const isKeyStyle = !params.authScheme.startsWith("OAUTH") && params.authScheme !== "DCR_OAUTH";
+    // Both styles carry the user's fields on the connected account
+    // (ConnectionData {authScheme, val}): key-style = the secret itself;
+    // OAuth-style = pre-OAuth initiation fields (Customer ID, WABA ID…),
+    // after which Composio returns the OAuth redirect URL as usual.
     const conn = (await (client.connectedAccounts as unknown as {
       initiate: (
         userId: string,
@@ -361,7 +396,9 @@ export async function connectWithCredentials(params: {
     }).initiate(
       userId,
       cfg.id,
-      isKeyStyle ? { config: { authScheme: params.authScheme, val: params.credentials } } : undefined,
+      Object.keys(params.credentials).length > 0
+        ? { config: { authScheme: params.authScheme, val: params.credentials } }
+        : undefined,
     )) ?? {};
     return {
       url: conn.redirectUrl ?? null,

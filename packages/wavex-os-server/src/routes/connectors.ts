@@ -257,12 +257,13 @@ export function registerConnectorRoutes(app: FastifyInstance): void {
   // creation/initiation fields merged); POST creates a use_custom_auth
   // auth config + connected account with those credentials. Backs the
   // Directory's "requires_custom_credentials" path (e.g. Amplitude).
-  app.get<{ Params: { toolkitSlug: string } }>(
+  app.get<{ Params: { toolkitSlug: string }; Querystring: { fieldsFor?: string } }>(
     "/wavex-os/onboarding/connectors/credential-requirements/:toolkitSlug",
     async (req, reply) => {
       const slug = (req.params.toolkitSlug ?? "").trim().toLowerCase();
       if (!slug) return reply.code(400).send({ error: "toolkitSlug required" });
-      return reply.send(await getCredentialRequirements(slug));
+      const fieldsFor = req.query.fieldsFor === "initiation" ? "initiation" : "all";
+      return reply.send(await getCredentialRequirements(slug, { fieldsFor }));
     },
   );
 

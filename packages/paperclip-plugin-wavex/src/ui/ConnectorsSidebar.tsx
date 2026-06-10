@@ -96,7 +96,7 @@ interface ConnectResult {
   redirectUrl?: string | null;
   pendingConnectionId?: string | null;
   needsLiveWiring?: boolean;
-  reason?: "disabled" | "requires_custom_credentials" | "authorize_failed";
+  reason?: "disabled" | "requires_custom_credentials" | "requires_initiation_fields" | "authorize_failed";
   error?: string;
   status?: number;
 }
@@ -492,10 +492,17 @@ function DirectoryModal({
           kind: "info",
           text: `Opening ${slug} OAuth in a new tab. The card will flip to connected once Composio confirms.`,
         });
-      } else if (res?.reason === "requires_custom_credentials") {
-        // No one-click OAuth on Composio for this toolkit — open the
+      } else if (
+        res?.reason === "requires_custom_credentials" ||
+        res?.reason === "requires_initiation_fields"
+      ) {
+        // Either no one-click OAuth (own credentials needed) or managed OAuth
+        // that needs pre-OAuth fields (Customer ID, WABA ID…) — both open the
         // credential form instead of dead-ending with an error banner.
-        const reqs = (await credentialRequirements({ slug })) as {
+        const reqs = (await credentialRequirements({
+          slug,
+          fieldsFor: res.reason === "requires_initiation_fields" ? "initiation" : "all",
+        })) as {
           ok?: boolean;
           authScheme?: string | null;
           fields?: CredentialFormState["fields"];
