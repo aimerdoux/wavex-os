@@ -13,6 +13,8 @@
 
 import type {
   ApiKeyValidation,
+  CredentialField,
+  CredentialRequirements,
   FeaturedToolkit,
   LiveConnectorRow,
   OAuthInitResult,
@@ -243,4 +245,132 @@ export function composioUserId(companyId: string, userId: string): string {
  *  fall back to a company-scoped "anon" namespace. */
 function composioCompanyUser(companyId: string, userId?: string): string {
   return userId ? `wavex/${companyId}/${userId}` : `wavex/${companyId}/anon`;
+}
+
+/** What the customer must supply to connect a toolkit that has no
+ *  Composio-managed OAuth. Picks the most key-like auth scheme the toolkit
+ *  supports (API_KEY > BEARER_TOKEN > BASIC > OAUTH2) and returns the
+ *  required auth-config creation fields for it. */
+export async function getCredentialRequirements(
+  toolkitSlug: string,
+): Promise<CredentialRequirements> {
+  const client = await getClient();
+  if (!client) {
+    return { ok: false, toolkitSlug, authScheme: null, fields: [], error: "composio_disabled" };
+  }
+  try {
+    const toolkit = (await (client.toolkits as unknown as {
+      getToolkitBySlug: (slug: string) => Promise<unknown>;
+    }).getToolkitBySlug(toolkitSlug)) as {
+      authConfigDetails?: Array<{ mode?: string }> | null;
+    } & { [k: string]: unknown };
+    const schemes: string[] =
+      ((toolkit as { authSchemes?: string[] }).authSchemes ??
+        toolkit.authConfigDetails?.map((d) => d.mode ?? "").filter(Boolean)) ?? [];
+    const preference = ["API_KEY", "BEARER_TOKEN", "BASIC", "OAUTH2", "OAUTH1"];
+    const authScheme =
+      preference.find((s) => schemes.includes(s)) ?? schemes[0] ?? "API_KEY";
+    const tk = client.toolkits as unknown as {
+      getAuthConfigCreationFields: (
+        slug: string,
+        scheme: string,
+        opts?: { requiredOnly?: boolean },
+      ) => Promise<unknown>;
+      getConnectedAccountInitiationFields: (
+        slug: string,
+        scheme: string,
+        opts?: { requiredOnly?: boolean },
+      ) => Promise<unknown>;
+    };
+    // Key-style schemes carry the secret on the CONNECTED ACCOUNT (initiation
+    // fields); custom OAuth apps carry client id/secret on the AUTH CONFIG
+    // (creation fields). Merge both so one form covers every scheme.
+    const normalize = (raw: unknown): CredentialField[] => {
+      const list = Array.isArray(raw)
+        ? raw
+        : ((raw as { fields?: unknown[] })?.fields ?? []);
+      return (list as Array<Record<string, unknown>>)
+        .map((f) => ({
+          name: String(f.name ?? f.key ?? ""),
+          displayName: String(f.displayName ?? f.display_name ?? f.name ?? ""),
+          type: String(f.type ?? "string"),
+          required: Boolean(f.required ?? true),
+          description: typeof f.description === "string" ? f.description : null,
+        }))
+        .filter((f) => f.name.length > 0);
+    };
+    const [creationRaw, initiationRaw] = await Promise.all([
+      tk.getAuthConfigCreationFields(toolkitSlug, authScheme, { requiredOnly: true }).catch(() => []),
+      tk.getConnectedAccountInitiationFields(toolkitSlug, authScheme, { requiredOnly: true }).catch(() => []),
+    ]);
+    const merged = new Map<string, CredentialField>();
+    for (const f of [...normalize(creationRaw), ...normalize(initiationRaw)]) {
+      if (!merged.has(f.name)) merged.set(f.name, f);
+    }
+    return { ok: true, toolkitSlug, authScheme, fields: [...merged.values()] };
+  } catch (err) {
+    return {
+      ok: false,
+      toolkitSlug,
+      authScheme: null,
+      fields: [],
+      error: (err as Error).message,
+    };
+  }
+}
+
+/** Connect a toolkit using customer-supplied credentials: creates a
+ *  use_custom_auth auth config carrying the credentials, then initiates a
+ *  connected account against it. Key-style schemes complete immediately
+ *  (url null, status active/pending); custom OAuth apps return a redirect
+ *  url for the user to finish in the browser. */
+export async function connectWithCredentials(params: {
+  companyId: string;
+  userId?: string;
+  toolkitSlug: string;
+  authScheme: string;
+  credentials: Record<string, string>;
+}): Promise<OAuthInitResult & { status?: string | null }> {
+  const client = await getClient();
+  if (!client) {
+    return { url: null, pendingConnectionId: null, needsLiveWiring: true, reason: "disabled" };
+  }
+  try {
+    const cfg = await (client.authConfigs as unknown as {
+      create: (
+        toolkit: string,
+        options: { type: "use_custom_auth"; authScheme: string; credentials: Record<string, string>; name?: string },
+      ) => Promise<{ id: string }>;
+    }).create(params.toolkitSlug, {
+      type: "use_custom_auth",
+      authScheme: params.authScheme,
+      credentials: params.credentials,
+      name: `wavex-${params.companyId.slice(0, 8)}-${params.toolkitSlug}`,
+    });
+    const userId = composioCompanyUser(params.companyId, params.userId);
+    // Key-style schemes also need the secret on the connected account
+    // (ConnectionData {authScheme, val}); OAuth-style schemes ignore config
+    // and return a redirect URL instead.
+    const isKeyStyle = !params.authScheme.startsWith("OAUTH") && params.authScheme !== "DCR_OAUTH";
+    const conn = (await (client.connectedAccounts as unknown as {
+      initiate: (
+        userId: string,
+        authConfigId: string,
+        options?: Record<string, unknown>,
+      ) => Promise<{ id: string; status?: string; redirectUrl?: string | null }>;
+    }).initiate(
+      userId,
+      cfg.id,
+      isKeyStyle ? { config: { authScheme: params.authScheme, val: params.credentials } } : undefined,
+    )) ?? {};
+    return {
+      url: conn.redirectUrl ?? null,
+      pendingConnectionId: conn.id ?? null,
+      status: conn.status ?? null,
+    };
+  } catch (err) {
+    const message = (err as Error).message ?? "";
+    console.warn(`[composio-shim] connectWithCredentials(${params.toolkitSlug}) failed:`, message);
+    return { url: null, pendingConnectionId: null, needsLiveWiring: true, reason: "authorize_failed" };
+  }
 }

@@ -96,8 +96,23 @@ interface ConnectResult {
   redirectUrl?: string | null;
   pendingConnectionId?: string | null;
   needsLiveWiring?: boolean;
+  reason?: "disabled" | "requires_custom_credentials" | "authorize_failed";
   error?: string;
   status?: number;
+}
+
+interface CredentialFormState {
+  slug: string;
+  authScheme: string;
+  fields: Array<{
+    name: string;
+    displayName: string;
+    type: string;
+    required: boolean;
+    description?: string | null;
+  }>;
+  values: Record<string, string>;
+  submitting: boolean;
 }
 
 // Popularity rank (anchors the "#N popular" badge). Mirrors Claude's
@@ -258,6 +273,45 @@ function DirectoryModal({
   );
   const connect = usePluginAction("connectors-connect");
   const disconnect = usePluginAction("connectors-disconnect");
+  const credentialRequirements = usePluginAction("connectors-credential-requirements");
+  const connectCredentials = usePluginAction("connectors-connect-credentials");
+  const [credForm, setCredForm] = useState<CredentialFormState | null>(null);
+
+  const submitCredForm = async () => {
+    if (!credForm) return;
+    const missing = credForm.fields.filter((f) => f.required && !(credForm.values[f.name] ?? "").trim());
+    if (missing.length > 0) {
+      setBanner({ kind: "error", text: `Missing required: ${missing.map((f) => f.displayName).join(", ")}` });
+      return;
+    }
+    setCredForm({ ...credForm, submitting: true });
+    try {
+      const res = (await connectCredentials({
+        companyId,
+        slug: credForm.slug,
+        authScheme: credForm.authScheme,
+        credentials: credForm.values,
+      })) as ConnectResult & { connectionStatus?: string | null };
+      if (res?.ok && res.redirectUrl) {
+        window.open(res.redirectUrl, "_blank", "noopener,noreferrer");
+        setPolling(credForm.slug);
+        setCredForm(null);
+        setBanner({ kind: "info", text: `Finishing ${credForm.slug} OAuth in a new tab.` });
+      } else if (res?.ok) {
+        setCredForm(null);
+        setPolling(credForm.slug);
+        setBanner({ kind: "info", text: `${credForm.slug} credentials accepted — verifying the connection…` });
+        await connected.refresh();
+        onChanged();
+      } else {
+        setCredForm({ ...credForm, submitting: false });
+        setBanner({ kind: "error", text: res?.error ?? `Could not connect ${credForm.slug} with these credentials.` });
+      }
+    } catch (err) {
+      setCredForm({ ...credForm, submitting: false });
+      setBanner({ kind: "error", text: `Credential connect failed: ${err instanceof Error ? err.message : String(err)}` });
+    }
+  };
 
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState<Set<string>>(new Set());
@@ -438,6 +492,38 @@ function DirectoryModal({
           kind: "info",
           text: `Opening ${slug} OAuth in a new tab. The card will flip to connected once Composio confirms.`,
         });
+      } else if (res?.reason === "requires_custom_credentials") {
+        // No one-click OAuth on Composio for this toolkit — open the
+        // credential form instead of dead-ending with an error banner.
+        const reqs = (await credentialRequirements({ slug })) as {
+          ok?: boolean;
+          authScheme?: string | null;
+          fields?: CredentialFormState["fields"];
+          error?: string;
+        };
+        setBusy((prev) => {
+          const next = new Set(prev);
+          next.delete(slug);
+          return next;
+        });
+        if (reqs?.ok && (reqs.fields?.length ?? 0) > 0) {
+          setCredForm({
+            slug,
+            authScheme: reqs.authScheme ?? "API_KEY",
+            fields: reqs.fields ?? [],
+            values: {},
+            submitting: false,
+          });
+          setBanner({
+            kind: "info",
+            text: `${slug} has no one-click OAuth — enter your own credentials below to connect it.`,
+          });
+        } else {
+          setBanner({
+            kind: "error",
+            text: `${slug} needs custom credentials but the field list could not be loaded${reqs?.error ? `: ${reqs.error}` : ""}.`,
+          });
+        }
       } else {
         setBusy((prev) => {
           const next = new Set(prev);
@@ -602,6 +688,87 @@ function DirectoryModal({
               >
                 ×
               </button>
+            </div>
+          ) : null}
+          {credForm ? (
+            <div
+              style={{
+                margin: "8px 16px",
+                padding: 14,
+                borderRadius: 8,
+                border: "1px solid rgba(78,201,176,0.35)",
+                background: "rgba(78,201,176,0.06)",
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+                fontSize: 12,
+              }}
+            >
+              <div style={{ fontWeight: 600, fontSize: 13 }}>
+                Connect {credForm.slug} with your credentials ({credForm.authScheme})
+              </div>
+              {credForm.fields.map((f) => (
+                <label key={f.name} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                  <span>
+                    {f.displayName}
+                    {f.required ? " *" : ""}
+                    {f.description ? (
+                      <span style={{ opacity: 0.6 }}> — {f.description}</span>
+                    ) : null}
+                  </span>
+                  <input
+                    type={/key|secret|token|password/i.test(f.name) ? "password" : "text"}
+                    value={credForm.values[f.name] ?? ""}
+                    onChange={(e) =>
+                      setCredForm((prev) =>
+                        prev ? { ...prev, values: { ...prev.values, [f.name]: e.target.value } } : prev,
+                      )
+                    }
+                    style={{
+                      padding: "6px 8px",
+                      borderRadius: 6,
+                      border: "1px solid rgba(255,255,255,0.15)",
+                      background: "rgba(0,0,0,0.3)",
+                      color: "inherit",
+                      fontSize: 12,
+                    }}
+                  />
+                </label>
+              ))}
+              <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                <button
+                  type="button"
+                  disabled={credForm.submitting}
+                  onClick={() => void submitCredForm()}
+                  style={{
+                    padding: "6px 14px",
+                    borderRadius: 6,
+                    border: "none",
+                    background: "#4ec9b0",
+                    color: "#04211a",
+                    fontWeight: 600,
+                    cursor: credForm.submitting ? "wait" : "pointer",
+                    fontSize: 12,
+                  }}
+                >
+                  {credForm.submitting ? "Connecting…" : "Connect"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCredForm(null)}
+                  style={{
+                    padding: "6px 14px",
+                    borderRadius: 6,
+                    border: "1px solid rgba(255,255,255,0.2)",
+                    background: "transparent",
+                    color: "inherit",
+                    cursor: "pointer",
+                    fontSize: 12,
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           ) : null}
           {setupStatus.loading && !setupStatus.data ? (

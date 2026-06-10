@@ -41,3 +41,22 @@ export interface OAuthInitResult {
    *  - "authorize_failed": live Composio call failed (transient/other) */
   reason?: "disabled" | "requires_custom_credentials" | "authorize_failed";
 }
+
+/** One input the customer must fill to connect a toolkit that has no
+ *  Composio-managed OAuth (API key, bearer token, custom OAuth app…). */
+export interface CredentialField {
+  name: string;
+  displayName: string;
+  type: string;
+  required: boolean;
+  description?: string | null;
+}
+
+export interface CredentialRequirements {
+  ok: boolean;
+  toolkitSlug: string;
+  /** chosen auth scheme, e.g. "API_KEY" | "BEARER_TOKEN" | "BASIC" | "OAUTH2" */
+  authScheme: string | null;
+  fields: CredentialField[];
+  error?: string;
+}

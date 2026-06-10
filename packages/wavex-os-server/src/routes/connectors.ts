@@ -33,6 +33,8 @@ import {
   getConnectionStatus,
   pingConnection,
   listConnections,
+  getCredentialRequirements,
+  connectWithCredentials,
 } from "@wavex-os/composio-shim";
 import { getInferenceMode } from "@wavex-os/inference-adapter";
 
@@ -245,6 +247,41 @@ export function registerConnectorRoutes(app: FastifyInstance): void {
         await writeToolsFile(avatarId, cur);
       }
 
+      return reply.send(result);
+    },
+  );
+
+  // ── 1a. Custom-credentials flow (toolkits without Composio-managed OAuth) ─
+  //
+  // GET returns the form fields the customer must fill (auth scheme +
+  // creation/initiation fields merged); POST creates a use_custom_auth
+  // auth config + connected account with those credentials. Backs the
+  // Directory's "requires_custom_credentials" path (e.g. Amplitude).
+  app.get<{ Params: { toolkitSlug: string } }>(
+    "/wavex-os/onboarding/connectors/credential-requirements/:toolkitSlug",
+    async (req, reply) => {
+      const slug = (req.params.toolkitSlug ?? "").trim().toLowerCase();
+      if (!slug) return reply.code(400).send({ error: "toolkitSlug required" });
+      return reply.send(await getCredentialRequirements(slug));
+    },
+  );
+
+  app.post<{
+    Body: {
+      companyId: string;
+      userId?: string;
+      toolkitSlug: string;
+      authScheme: string;
+      credentials: Record<string, string>;
+    };
+  }>(
+    "/wavex-os/onboarding/connectors/connect-with-credentials",
+    async (req, reply) => {
+      const { companyId, userId, toolkitSlug, authScheme, credentials } = req.body ?? {};
+      if (!companyId || !toolkitSlug || !authScheme || !credentials || Object.keys(credentials).length === 0) {
+        return reply.code(400).send({ error: "companyId + toolkitSlug + authScheme + credentials required" });
+      }
+      const result = await connectWithCredentials({ companyId, userId, toolkitSlug, authScheme, credentials });
       return reply.send(result);
     },
   );

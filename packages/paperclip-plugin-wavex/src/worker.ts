@@ -895,6 +895,62 @@ const plugin = definePlugin({
       }
     });
 
+    // Custom-credentials flow for toolkits without Composio-managed OAuth
+    // (Directory shows a credential form instead of dead-ending).
+    ctx.actions.register("connectors-credential-requirements", async (params) => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      const slug = String(params.slug ?? "");
+      if (!slug) return { ok: false, error: "missing slug" };
+      try {
+        const r = await localFetch(
+          `${base}/wavex-os/onboarding/connectors/credential-requirements/${encodeURIComponent(slug)}`,
+        );
+        if (!r.ok) return { ok: false, error: `HTTP ${r.status}` };
+        return await r.json();
+      } catch (err) {
+        return { ok: false, error: String(err) };
+      }
+    });
+
+    ctx.actions.register("connectors-connect-credentials", async (params) => {
+      const cfg = (await ctx.config.get()) as PluginConfig | null;
+      const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
+      const id = String(params.companyId ?? "");
+      const slug = String(params.slug ?? "");
+      const authScheme = String(params.authScheme ?? "");
+      const credentials = (params.credentials ?? {}) as Record<string, string>;
+      if (!id || !slug || !authScheme) return { ok: false, error: "missing companyId/slug/authScheme" };
+      try {
+        const r = await localFetch(`${base}/wavex-os/onboarding/connectors/connect-with-credentials`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ companyId: id, toolkitSlug: slug, authScheme, credentials }),
+        });
+        if (!r.ok) return { ok: false, status: r.status, error: `HTTP ${r.status}` };
+        const body = (await r.json()) as {
+          url?: string | null;
+          pendingConnectionId?: string | null;
+          status?: string | null;
+          needsLiveWiring?: boolean;
+          reason?: string;
+        };
+        if (body.needsLiveWiring) {
+          return { ok: false, reason: body.reason ?? "authorize_failed", error: "Credential connect failed — check the wavex-os-server logs (likely invalid credentials or scheme)." };
+        }
+        // Key-style schemes complete without a redirect; custom OAuth apps
+        // still hand back a URL to finish in the browser.
+        return {
+          ok: true,
+          redirectUrl: body.url ?? null,
+          pendingConnectionId: body.pendingConnectionId ?? null,
+          connectionStatus: body.status ?? null,
+        };
+      } catch (err) {
+        return { ok: false, error: String(err) };
+      }
+    });
+
     ctx.actions.register("connectors-disconnect", async (params) => {
       const cfg = (await ctx.config.get()) as PluginConfig | null;
       const base = cfg?.wavexApiBase ?? DEFAULT_WAVEX_BASE;
