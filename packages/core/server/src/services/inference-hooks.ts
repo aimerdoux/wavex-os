@@ -31,7 +31,12 @@ import { logActivity } from "./activity-log.js";
  */
 
 export type InferenceHookEvent = {
-  type: "run_failed" | "breaker_paused" | "connector_failed" | "run_completed";
+  type:
+    | "run_failed"
+    | "breaker_paused"
+    | "connector_failed"
+    | "run_completed"
+    | "onboarding_error";
   companyId: string;
   agentId?: string | null;
   runId?: string | null;
@@ -51,7 +56,13 @@ const DEFAULT_CONFIG: HookConfig = {
   enabled: true,
   fixerAgentId: null,
   maxWakesPerHour: 6,
-  match: { run_failed: true, breaker_paused: true, connector_failed: true, run_completed: false },
+  match: {
+    run_failed: true,
+    breaker_paused: true,
+    connector_failed: true,
+    run_completed: false,
+    onboarding_error: true,
+  },
   ignoreErrorCodes: ["claude_transient_upstream"],
 };
 

@@ -214,6 +214,28 @@ const PRIORITY_ALLOWED_BY_TIER: Record<GovernorTier, ReadonlySet<string> | null>
   frozen: new Set<string>(),
 };
 
+/** Max simultaneously RUNNING system runs per tier (global — the provider
+ *  quota is global). Priority gating alone failed on 2026-06-10: a freshly
+ *  incepted fleet ran 13 high-priority runs concurrently and burned the 5h
+ *  window from 50% to 68% in ~25 minutes. Concurrency is the actual burn
+ *  rate control; priority only decides WHO gets the slots. */
+function concurrencyCapForTier(tier: GovernorTier): number {
+  const env = (name: string, fallback: number) => {
+    const raw = Number.parseInt(process.env[name] ?? "", 10);
+    return Number.isFinite(raw) && raw >= 0 ? raw : fallback;
+  };
+  switch (tier) {
+    case "open":
+      return env("WAVEX_GOVERNOR_MAX_CONCURRENT_OPEN", 6);
+    case "conserve":
+      return env("WAVEX_GOVERNOR_MAX_CONCURRENT_CONSERVE", 3);
+    case "critical_only":
+      return env("WAVEX_GOVERNOR_MAX_CONCURRENT_CRITICAL", 1);
+    case "frozen":
+      return 0;
+  }
+}
+
 /**
  * Evaluate whether a queued run may be claimed right now.
  * `triggerDetail === "manual"` bypasses tier + defer gates (humans always can run),
@@ -294,7 +316,24 @@ export async function evaluateRunClaim(
     }
   }
 
-  // 3. Quota tier gate (system wakes only; manual always passes).
+  // 3. Concurrency cap — the burn-rate control (system wakes only).
+  if (!manual) {
+    const cap = concurrencyCapForTier(status.tier);
+    const runningCount = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(heartbeatRuns)
+      .where(eq(heartbeatRuns.status, "running"))
+      .then((rows) => rows[0]?.n ?? 0);
+    if (runningCount >= cap) {
+      return {
+        action: "defer",
+        tier: status.tier,
+        reason: `Concurrency cap: ${runningCount} runs already executing (tier ${status.tier} allows ${cap}) — stays queued.`,
+      };
+    }
+  }
+
+  // 4. Quota tier gate (system wakes only; manual always passes).
   if (manual) return { action: "allow", tier: status.tier };
   const allowedPriorities = PRIORITY_ALLOWED_BY_TIER[status.tier];
   if (allowedPriorities == null) return { action: "allow", tier: status.tier };
@@ -304,6 +343,13 @@ export async function evaluateRunClaim(
       tier: status.tier,
       reason: `Quota window ${status.windowLabel ?? ""} at ${status.utilizationPct ?? "?"}% — frozen for system runs until reset${status.resetsAt ? ` (${status.resetsAt})` : ""}.`,
     };
+  }
+  // Issue-less runs are bootstrap/kickoff wakes (e.g. a freshly incepted
+  // company's first runs). Deferring those makes onboarding look hung
+  // (QA finding #2, 2026-06-10) — allow them in conserve; critical_only
+  // and frozen still hold everything system-triggered without priority.
+  if (!issueId && status.tier === "conserve") {
+    return { action: "allow", tier: status.tier };
   }
   if (issuePriority && allowedPriorities.has(issuePriority)) {
     return { action: "allow", tier: status.tier };

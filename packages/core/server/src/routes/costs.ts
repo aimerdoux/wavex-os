@@ -21,6 +21,7 @@ import {
 import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
 import { fetchAllQuotaWindows } from "../services/quota-windows.js";
 import { getGovernorStatus } from "../services/run-governor.js";
+import { emitInferenceHook, type InferenceHookEvent } from "../services/inference-hooks.js";
 import { badRequest } from "../errors.js";
 import type { PluginWorkerManager } from "../services/plugin-worker-manager.js";
 
@@ -242,6 +243,34 @@ export function costRoutes(
     const forceRefresh = req.query.refresh === "1";
     const status = await getGovernorStatus(forceRefresh);
     res.json(status);
+  });
+
+  // Cross-process inference-hook ingestion: lets sibling processes
+  // (wavex-os-server onboarding/bridge on :3101, edge functions) land their
+  // errors on the same inference surface as in-process events. Storm-capped
+  // and deduped inside emitInferenceHook; localhost-only by deployment.
+  router.post("/hooks/emit", async (req, res) => {
+    const body = req.body as Partial<InferenceHookEvent> | undefined;
+    const VALID_TYPES = new Set([
+      "run_failed",
+      "breaker_paused",
+      "connector_failed",
+      "run_completed",
+      "onboarding_error",
+    ]);
+    if (!body?.companyId || !body.type || !VALID_TYPES.has(body.type)) {
+      res.status(400).json({ error: "type (valid hook type) + companyId required" });
+      return;
+    }
+    emitInferenceHook(db, {
+      type: body.type,
+      companyId: body.companyId,
+      agentId: body.agentId ?? null,
+      runId: body.runId ?? null,
+      errorCode: body.errorCode ?? null,
+      detail: body.detail ?? null,
+    });
+    res.status(202).json({ accepted: true });
   });
 
   router.get("/companies/:companyId/budgets/overview", async (req, res) => {
