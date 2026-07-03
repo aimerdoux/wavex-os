@@ -10,7 +10,7 @@
  *  for the advanced option, or use the legacy explicit affordance from
  *  the welcome screen. */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 interface Props {
   companyId: string;
@@ -23,6 +23,17 @@ interface Props {
 
 export function ConfirmResetModal({ companyId, busy, onCancel, onConfirm }: Props) {
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !busy) {
+        e.preventDefault();
+        onCancel();
+      }
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [busy, onCancel]);
 
   return (
     <div
