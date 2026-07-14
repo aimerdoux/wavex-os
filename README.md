@@ -117,6 +117,12 @@ tony-apple-qa init
 
 `tony-apple-qa init` opens the five-pillar wizard in your browser. Answer questions about your app, your Claude setup, and your QA goals; the wizard builds your agent roster and activates the fleet in under an hour. See [`packages/tony-apple-qa/`](packages/tony-apple-qa/) for the full CLI reference.
 
+### Smoke test catching a real-device bug
+
+![Tony Apple QA catching a touch-target failure on iPhone 13 viewport](docs/demo/demo.gif)
+
+A PR is opened → the smoke test runs on a mobile viewport → a touch-target regression is caught → the PR check fails with a screenshot. No cloud infra, no API keys — runs entirely on your machine against your Claude Max subscription.
+
 ---
 
 ## Quick evaluation (pre-npm)
